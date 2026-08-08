@@ -1,0 +1,20 @@
+{
+  "..\\node_modules\\next\\dist\\client\\dev\\hot-reloader\\app\\use-websocket.js -> @vercel/turbopack-ecmascript-runtime/browser/dev/hmr-client/hmr-client.ts": {
+    "id": "..\\node_modules\\next\\dist\\client\\dev\\hot-reloader\\app\\use-websocket.js -> @vercel/turbopack-ecmascript-runtime/browser/dev/hmr-client/hmr-client.ts",
+    "files": [
+      "static/chunks/_app-pages-browser_node_modules_next_dist_client_dev_noop-turbopack-hmr_js.js"
+    ]
+  },
+  "lib\\slides.ts -> pdfjs-dist/build/pdf.min.mjs": {
+    "id": "lib\\slides.ts -> pdfjs-dist/build/pdf.min.mjs",
+    "files": [
+      "static/chunks/_app-pages-browser_node_modules_pdfjs-dist_build_pdf_min_mjs.js"
+    ]
+  },
+  "lib\\visualAnalysis.ts -> @mediapipe/tasks-vision": {
+    "id": "lib\\visualAnalysis.ts -> @mediapipe/tasks-vision",
+    "files": [
+      "static/chunks/_app-pages-browser_node_modules_mediapipe_tasks-vision_vision_bundle_mjs.js"
+    ]
+  }
+}

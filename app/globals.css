@@ -1,0 +1,163 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ============================================================
+   Palet warna via CSS variables (planning-update-2 Fitur A,
+   diganti planning-update-7 Fitur AD).
+   Nilai = channel RGB "R G B" agar opacity modifier Tailwind
+   (mis. bg-white/10, shadow-brand-500/25) tetap jalan.
+   Token lama (brand/slate/ink/mint/white) dialias ke palet baru
+   → seluruh UI ikut berubah + otomatis theme-aware.
+   Terang : dominant #f2f3f7, secondary #272b3f, accent #283157
+   Gelap  : lightness tiap anchor DIBALIK (100-L), hue/saturasi
+   dipertahankan — brand-500 selalu = accent, slate-700 selalu
+   = secondary, di KEDUA tema (invariant yang sama sejak dulu).
+   `ink-*` sengaja TIDAK ikut dibalik (tetap gelap konstan di
+   kedua tema — dipakai elemen kayak code block yang tak ikut
+   tema, sama seperti pola palet sebelumnya).
+   `secondary-fixed`/`accent-fixed` = warna khusus sidebar, sengaja
+   TIDAK ikut aturan balik-lightness (bug: brand-300 & secondary
+   sama-sama kebalik → teks sidebar jadi biru gelap & overlay jadi
+   abu di atas latar yang tiba-tiba terang).
+   Sidebar dirancang selalu KONTRAS dengan halamannya, arah kontras
+   dibalik per tema: terang → sidebar navy #272b3f (gelap di atas
+   halaman terang), gelap → sidebar #414862 yang justru lebih TERANG
+   dari halaman #131620 (2.00:1, terangkat). Jadi sidebar selalu jadi
+   bidang yang "beda sendiri", bukan menyatu dengan latar.
+   PENTING: beda kedua nilai itu sendiri harus terasa saat toggle —
+   percobaan sebelumnya pakai #2f3548 gagal karena cuma 1.13:1 dari
+   #272b3f (mata tidak menangkap perubahan apa pun). Sekarang 1.55:1.
+   `accent-fixed` (logo, ".skuy", tombol + New Course) ikut dicerahkan
+   di mode gelap supaya tetap terbaca di atas sidebar yang lebih
+   terang: 6.33:1 (terang) / 5.27:1 (gelap). Token ini KHUSUS sidebar.
+   Teks nav non-aktif sengaja pakai `text-light/70`, bukan
+   `light-muted` — opacity menumpuk di atas latar sidebar apa pun jadi
+   ikut menyesuaikan sendiri (7.19:1 / 5.07:1), sekaligus supaya
+   `light-muted` (dipakai juga di hero login, header course, chat
+   widget) tidak perlu diubah demi kebutuhan sidebar.
+
+   LAPISAN KEDALAMAN — dulu `surface` (latar card) nilainya PERSIS
+   sama dengan `dominant` (latar halaman), jadi card tak punya beda
+   warna sama sekali dari latarnya (di mode gelap praktis hilang,
+   di mode terang terlihat datar). Sekarang dipisah 3 lapis:
+     halaman (dominant) < sidebar < card (surface) < surface-2
+   Terang : #f2f3f7 → card putih bersih #ffffff
+   Gelap  : #131620 → sidebar #1f2333 → card #2a2f41
+   Ujung bawah ramp `slate` mode gelap juga dinaikkan — slate-50
+   dulu 6 6 9 (nyaris hitam) bikin input di dalam card kelihatan
+   seperti lubang hitam; sekarang jadi lebih terang dari latar
+   halaman supaya terbaca sebagai bidang "cekung" di atas card.
+   ============================================================ */
+
+:root {
+  color-scheme: light;
+  --card-shadow: 16 20 35;
+
+  --dominant: 242 243 247;
+  --secondary: 39 43 63;
+  --accent: 40 49 87;
+  --secondary-fixed: 255 255 255;
+  --accent-fixed: 39 43 63;
+
+  /* Sidebar Tokens - Mode Terang: Sidebar PUTIH Clean (#ffffff) */
+  --sidebar-bg: 255 255 255;
+  --sidebar-fg: 27 30 44;
+  --sidebar-muted: 95 105 130;
+  --sidebar-border: 220 224 235;
+  --sidebar-border-opacity: 0.8;
+  --sidebar-active-bg: 39 43 63;
+  --sidebar-active-bg-opacity: 0.08;
+  --sidebar-hover-bg: 39 43 63;
+  --sidebar-hover-bg-opacity: 0.04;
+  --sidebar-accent-dot: 40 49 87;
+
+  --surface: 255 255 255;
+  --surface-2: 248 249 252;
+  --border: 217 220 232;
+  --light: 245 247 249;
+  --light-muted: 170 178 189;
+  --slate-50: 246 246 249;
+  --slate-100: 233 234 241;
+  --slate-200: 217 220 232;
+  --slate-300: 192 196 216;
+  --slate-400: 138 146 183;
+  --slate-500: 85 94 139;
+  --slate-600: 62 69 101;
+  --slate-700: 39 43 63;
+  --slate-800: 27 30 44;
+  --slate-900: 17 19 28;
+  --brand-50: 245 246 250;
+  --brand-100: 231 233 244;
+  --brand-200: 203 208 231;
+  --brand-300: 164 173 213;
+  --brand-400: 108 123 188;
+  --brand-500: 40 49 87;
+  --brand-600: 34 41 73;
+  --brand-700: 29 35 63;
+  --brand-800: 24 29 52;
+  --brand-900: 19 23 42;
+  --brand-950: 13 16 28;
+  --ink-700: 19 23 42;
+  --ink-800: 14 18 31;
+  --ink-900: 8 10 17;
+  --mint: 40 49 87;
+}
+
+:root.dark {
+  color-scheme: dark;
+  --card-shadow: 0 0 0;
+
+  --dominant: 19 22 32;
+  --secondary: 192 196 216;
+  --accent: 255 255 255;
+  --secondary-fixed: 19 22 32;
+  --accent-fixed: 255 255 255;
+
+  /* Sidebar Tokens - Mode Gelap: Hitam-Biru (#131620 / 19 22 32), Teks & Logo Putih */
+  --sidebar-bg: 19 22 32;
+  --sidebar-fg: 255 255 255;
+  --sidebar-muted: 170 178 189;
+  --sidebar-border: 255 255 255;
+  --sidebar-border-opacity: 0.12;
+  --sidebar-active-bg: 255 255 255;
+  --sidebar-active-bg-opacity: 0.12;
+  --sidebar-hover-bg: 255 255 255;
+  --sidebar-hover-bg-opacity: 0.06;
+  --sidebar-accent-dot: 255 255 255;
+
+  --surface: 28 34 50;
+  --surface-2: 38 46 66;
+  --border: 45 55 82;
+  --light: 245 247 249;
+  --light-muted: 170 178 189;
+  --slate-50: 24 29 43;
+  --slate-100: 32 39 58;
+  --slate-200: 45 55 82;
+  --slate-300: 66 75 108;
+  --slate-400: 110 122 166;
+  --slate-500: 141 151 185;
+  --slate-600: 166 174 201;
+  --slate-700: 192 196 216;
+  --slate-800: 245 247 249;
+  --slate-900: 255 255 255;
+  --brand-50: 5 6 10;
+  --brand-100: 11 14 24;
+  --brand-200: 24 29 52;
+  --brand-300: 42 51 91;
+  --brand-400: 67 82 147;
+  --brand-500: 255 255 255;
+  --brand-600: 182 189 221;
+  --brand-700: 192 198 226;
+  --brand-800: 203 208 231;
+  --brand-900: 213 217 236;
+  --brand-950: 227 230 242;
+  --ink-700: 19 23 42;
+  --ink-800: 14 18 31;
+  --ink-900: 8 10 17;
+  --mint: 168 176 215;
+}
+
+body {
+  @apply bg-dominant text-slate-800 antialiased;
+}
