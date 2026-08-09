@@ -7,7 +7,7 @@ import { stripEssaySecrets } from "@/lib/quiz";
 // (EXPRESS_TIMEOUT_MS di lib/api.ts) supaya bukan lapisan ini yang memutus duluan.
 // CATATAN: nilai efektifnya dibatasi paket Vercel — Hobby maksimal 300 detik,
 // jadi 600 hanya berlaku penuh di paket yang mengizinkannya.
-export const maxDuration = 600;
+export const maxDuration = 60;
 
 // Kuis kustom (Modul 10): teruskan teks bebas atau file PDF ke Express.
 export async function POST(request: Request) {

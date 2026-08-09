@@ -6,7 +6,7 @@ import { apiFetchSimulation, expressErrorMessage } from "@/lib/api";
 // (EXPRESS_TIMEOUT_MS di lib/api.ts) supaya bukan lapisan ini yang memutus duluan.
 // CATATAN: nilai efektifnya dibatasi paket Vercel — Hobby maksimal 300 detik,
 // jadi 600 hanya berlaku penuh di paket yang mengizinkannya.
-export const maxDuration = 600;
+export const maxDuration = 60;
 
 // Fitur BB — buat sesi simulasi. userId dari SESI server (bukan kiriman browser);
 // kuota sesi ditegakkan di Express (entitlements.js).

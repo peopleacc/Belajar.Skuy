@@ -6,7 +6,7 @@ import { apiFetchForm, expressErrorMessage } from "@/lib/api";
 // (EXPRESS_TIMEOUT_MS di lib/api.ts) supaya bukan lapisan ini yang memutus duluan.
 // CATATAN: nilai efektifnya dibatasi paket Vercel — Hobby maksimal 300 detik,
 // jadi 600 hanya berlaku penuh di paket yang mengizinkannya.
-export const maxDuration = 600;
+export const maxDuration = 60;
 
 const MAX_BYTES = 10 * 1024 * 1024; // Fitur R — 10MB
 

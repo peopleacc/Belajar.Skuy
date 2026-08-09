@@ -6,7 +6,7 @@ import { apiFetch, expressErrorMessage } from "@/lib/api";
 // (EXPRESS_TIMEOUT_MS di lib/api.ts) supaya bukan lapisan ini yang memutus duluan.
 // CATATAN: nilai efektifnya dibatasi paket Vercel — Hobby maksimal 300 detik,
 // jadi 600 hanya berlaku penuh di paket yang mengizinkannya.
-export const maxDuration = 600;
+export const maxDuration = 60;
 
 // Proxy streaming chatbot (Modul 7/8): verifikasi user di sini, lalu
 // alirkan (pipe) SSE dari Express langsung ke browser tanpa buffering.

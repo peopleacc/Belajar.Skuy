@@ -6,7 +6,7 @@ import { apiFetch, expressErrorMessage } from "@/lib/api";
 // (EXPRESS_TIMEOUT_MS di lib/api.ts) supaya bukan lapisan ini yang memutus duluan.
 // CATATAN: nilai efektifnya dibatasi paket Vercel — Hobby maksimal 300 detik,
 // jadi 600 hanya berlaku penuh di paket yang mengizinkannya.
-export const maxDuration = 600;
+export const maxDuration = 60;
 
 // Jembatan aman ke service Express: user divalidasi di sini (session Supabase),
 // lalu request diteruskan dengan x-internal-secret. Secret tidak pernah sampai ke browser.
