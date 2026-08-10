@@ -10,7 +10,10 @@ export type PlanLimits = {
   chatMessagesPerChapter: number | null;
   customQuizPerDay: number | null;
   voicePractice: boolean;
-  simulationSessionsPerMonth: number | null;
+  // Fitur EC (planning-update-12): kuota simulasi dipisah per jenis & satuan
+  // berubah dari per-bulan ke per-minggu. simulationSessionsPerMonth dihapus.
+  presentationSessionsPerWeek: number | null;
+  interviewSessionsPerWeek: number | null;
 };
 
 export type Plan = {
@@ -48,7 +51,8 @@ const FALLBACK_USER_LIMITS: PlanLimits = {
   chatMessagesPerChapter: 5,
   customQuizPerDay: 1,
   voicePractice: false,
-  simulationSessionsPerMonth: 0,
+  presentationSessionsPerWeek: 0,
+  interviewSessionsPerWeek: 0,
 };
 
 /**
@@ -85,18 +89,22 @@ export function formatPrice(amount: number, currency: Currency): string {
 /**
  * Nilai cadangan kalau database tak terjangkau. Halaman harga TIDAK BOLEH blank
  * hanya karena satu query gagal — pengunjung yang mau membeli harus tetap melihat
- * sesuatu. Angkanya sengaja sama dengan seed migration 006.
+ * sesuatu. Angkanya sengaja sama dengan seed migration 006 + 012 (Fitur EC).
  */
 const FALLBACK: Record<Currency, { code: string; amount: number }[]> = {
   IDR: [
-    { code: "free", amount: 0 },
-    { code: "premium", amount: 80000 },
-    { code: "pro", amount: 250000 },
+    { code: "free",                 amount: 0 },
+    { code: "premium",              amount: 80000 },
+    { code: "premium_presentasi",   amount: 100000 },
+    { code: "premium_gabungan",     amount: 140000 },
+    { code: "pro",                  amount: 250000 },
   ],
   USD: [
-    { code: "free", amount: 0 },
-    { code: "premium", amount: 5 },
-    { code: "pro", amount: 15 },
+    { code: "free",                 amount: 0 },
+    { code: "premium",              amount: 5 },
+    { code: "premium_presentasi",   amount: 7 },
+    { code: "premium_gabungan",     amount: 9 },
+    { code: "pro",                  amount: 15 },
   ],
 };
 

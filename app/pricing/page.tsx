@@ -98,11 +98,12 @@ export default async function PricingPage() {
                       <th
                         key={plan.name}
                         className={`px-6 py-5 text-center text-sm font-bold ${
-                          i === 1 ? "text-brand-500" : ""
+                          // Fitur EC: popular = index 3 (Premium Gabungan)
+                          i === 3 ? "text-brand-500" : ""
                         }`}
                       >
                         {plan.name}
-                        {i === 1 && (
+                        {i === 3 && (
                           <span className="ml-2 rounded-full bg-brand-500/10 px-2 py-0.5 text-[9px] uppercase tracking-widest">
                             ★
                           </span>
