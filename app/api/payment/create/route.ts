@@ -149,11 +149,11 @@ export async function POST(request: Request) {
       },
     });
   } catch (err) {
-    console.error("[payment/create] Midtrans error:", err);
+    const detailMsg = err instanceof Error ? err.message : "Unknown error";
+    console.error("[payment/create] Midtrans error detail:", detailMsg);
     return NextResponse.json(
       {
-        error:
-          "Gagal menghubungi gateway pembayaran. Silakan coba lagi dalam beberapa menit.",
+        error: `Gagal membuat tagihan pembayaran: ${detailMsg}`,
       },
       { status: 502 }
     );

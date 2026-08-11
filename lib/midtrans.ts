@@ -7,21 +7,22 @@ import crypto from "crypto";
  *   MIDTRANS_SERVER_KEY=SB-Mid-server-xxxx   ← dari dashboard Midtrans
  *   MIDTRANS_IS_PRODUCTION=false              ← set 'true' saat live
  */
-const SERVER_KEY = process.env.MIDTRANS_SERVER_KEY ?? "";
-const IS_PRODUCTION = process.env.MIDTRANS_IS_PRODUCTION === "true";
+function getServerKey(): string {
+  return (process.env.MIDTRANS_SERVER_KEY ?? "").trim();
+}
 
-// URL API Midtrans Snap — otomatis pilih Sandbox atau Production
-const SNAP_BASE_URL = IS_PRODUCTION
-  ? "https://app.midtrans.com/snap/v1/transactions"
-  : "https://app.sandbox.midtrans.com/snap/v1/transactions";
+function isProduction(): boolean {
+  return process.env.MIDTRANS_IS_PRODUCTION === "true";
+}
 
-/**
- * Header Authorization Basic Auth.
- * Midtrans memakai format: Basic base64("SERVER_KEY:")
- * (password dikosongkan, hanya username = server key).
- */
-function authHeader(): string {
-  return "Basic " + Buffer.from(`${SERVER_KEY}:`).toString("base64");
+function getSnapBaseUrl(): string {
+  return isProduction()
+    ? "https://app.midtrans.com/snap/v1/transactions"
+    : "https://app.sandbox.midtrans.com/snap/v1/transactions";
+}
+
+function authHeader(serverKey: string): string {
+  return "Basic " + Buffer.from(`${serverKey}:`).toString("base64");
 }
 
 // ============================================================
@@ -67,7 +68,8 @@ export type SnapTransactionResult = {
 export async function createSnapTransaction(
   params: SnapTransactionParams
 ): Promise<SnapTransactionResult> {
-  if (!SERVER_KEY) {
+  const serverKey = getServerKey();
+  if (!serverKey) {
     throw new Error(
       "MIDTRANS_SERVER_KEY belum dikonfigurasi di environment variable."
     );
@@ -104,17 +106,19 @@ export async function createSnapTransaction(
     },
   };
 
-  const res = await fetch(SNAP_BASE_URL, {
+  const snapBaseUrl = getSnapBaseUrl();
+  const res = await fetch(snapBaseUrl, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: authHeader(),
+      Authorization: authHeader(serverKey),
     },
     body: JSON.stringify(body),
   });
 
   if (!res.ok) {
     const text = await res.text().catch(() => "no body");
+    console.error(`[Midtrans API Error] URL: ${snapBaseUrl}, Status: ${res.status}, Body: ${text}`);
     throw new Error(`Midtrans API error ${res.status}: ${text}`);
   }
 
@@ -146,8 +150,9 @@ export function verifyMidtransSignature(
   grossAmount: string,
   receivedSignature: string
 ): boolean {
-  if (!SERVER_KEY) return false;
-  const raw = `${orderId}${statusCode}${grossAmount}${SERVER_KEY}`;
+  const serverKey = getServerKey();
+  if (!serverKey) return false;
+  const raw = `${orderId}${statusCode}${grossAmount}${serverKey}`;
   const expected = crypto.createHash("sha512").update(raw).digest("hex");
   // Bandingkan dengan timingSafeEqual untuk mencegah timing attack
   try {
