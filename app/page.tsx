@@ -42,15 +42,18 @@ export default async function Home() {
               <p className="mx-auto max-w-2xl text-slate-500">{t.features.subtitle}</p>
             </div>
 
-            <div className="grid gap-6 md:grid-cols-3">
+            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
               {t.features.items.map((f) => (
-                <div key={f.title} className={`${CARD} p-8`}>
+                <div
+                  key={f.title}
+                  className={`${CARD} flex flex-col p-8 transition duration-200 hover:-translate-y-1 hover:shadow-lg`}
+                >
                   <span className="mb-6 flex h-14 w-14 items-center justify-center rounded-2xl bg-brand-500/10 text-2xl text-brand-500">
                     <i className={`bi ${f.icon}`}></i>
                   </span>
                   <h3 className="mb-3 text-xl font-bold">{f.title}</h3>
-                  <p className="mb-6 leading-relaxed text-slate-500">{f.desc}</p>
-                  <ul className="space-y-3">
+                  <p className="mb-6 flex-1 leading-relaxed text-slate-500">{f.desc}</p>
+                  <ul className="space-y-3 pt-2">
                     {f.bullets.map((b) => (
                       <li key={b} className="flex items-center gap-3 text-sm font-medium">
                         <i className="bi bi-check-circle-fill text-brand-500"></i>

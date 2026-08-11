@@ -72,7 +72,7 @@ export default async function PricingPage() {
         {/* ── Kartu paket ────────────────────────────────────────── */}
         <section className="px-5 py-14 md:px-10">
           <div className="mx-auto max-w-7xl">
-            <PricingPlans t={t} plans={plans} currentIndex={currentIndex} />
+            <PricingPlans t={t} plans={plans} currentIndex={currentIndex} isLoggedIn={!!user} />
           </div>
         </section>
 

@@ -1,6 +1,6 @@
-import Link from "next/link";
 import type { Dict } from "@/lib/i18n";
 import { formatPrice, type Plan } from "@/lib/plans";
+import PaymentButton from "@/components/PaymentButton";
 
 /**
  * Lima kartu paket (Fitur EC), dipakai di landing (/) dan halaman harga (/pricing).
@@ -22,10 +22,13 @@ export default function PricingPlans({
   t,
   plans,
   currentIndex = null,
+  isLoggedIn = false,
 }: {
   t: Dict;
   plans: Plan[];
   currentIndex?: number | null;
+  /** Jika true, tombol paket berbayar akan memicu checkout Midtrans. */
+  isLoggedIn?: boolean;
 }) {
   function PlanCard({
     p,
@@ -116,27 +119,15 @@ export default function PricingPlans({
           ))}
         </div>
 
-        {isCurrent ? (
-          <span
-            aria-disabled="true"
-            className={`cursor-default rounded-xl py-3.5 text-center text-sm font-semibold ${
-              popular ? "bg-white/20 text-white" : "bg-surface-2 text-slate-500"
-            }`}
-          >
-            {t.pricing.currentCta}
-          </span>
-        ) : (
-          <Link
-            href="/register"
-            className={`rounded-xl py-3.5 text-center text-sm font-semibold transition ${
-              popular
-                ? "bg-white text-brand-500 hover:opacity-90"
-                : "border border-brand-500 text-brand-500 hover:bg-brand-500 hover:text-white"
-            }`}
-          >
-            {p.cta}
-          </Link>
-        )}
+        <PaymentButton
+          planCode={harga?.code ?? "free"}
+          planName={p.name}
+          isLoggedIn={isLoggedIn}
+          isCurrent={isCurrent}
+          isPopular={popular}
+          ctaText={p.cta}
+          currentCtaText={t.pricing.currentCta}
+        />
       </div>
     );
   }
