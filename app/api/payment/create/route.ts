@@ -1,24 +1,22 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import { createSnapTransaction } from "@/lib/midtrans";
+import { createSnapTransaction, cancelMidtransTransaction } from "@/lib/midtrans";
 
 /**
  * POST /api/payment/create
  *
  * Membuat sesi pembayaran Midtrans Snap untuk upgrade paket.
  *
- * MEKANISME REUSE PENDING SESSION:
- * Sebelum meminta token baru ke Midtrans, endpoint ini memeriksa apakah
- * sudah ada order yang 'pending' dan belum kadaluarsa untuk kombinasi
- * (user_id + plan_code) yang sama. Kalau ada → kembalikan data lama.
- * Ini memastikan:
- *   - Refresh halaman tidak membuat VA/QRIS baru (yang lama tetap bisa dipakai).
- *   - Tidak ada dua order pending sekaligus untuk paket yang sama.
- *   - Tidak ada panggilan Midtrans API yang tidak perlu.
+ * MEKANISME SINGLE ACTIVE INVOICE & REUSE PENDING SESSION:
+ * 1. Jika user memilih paket yang SAMA dengan tagihan pending yang masih aktif:
+ *    -> Gunakan kembali (reuse) sesi lama tanpa membuat VA/QRIS baru.
+ * 2. Jika user memilih paket yang BERBEDA:
+ *    -> Otomatis batalkan (cancel) tagihan lama di Midtrans & Supabase
+ *       sehingga nomor VA/QRIS lama langsung mati dan user tidak bisa bayar 2 kali.
  *
  * Body: { planCode: string }
- * Response: { redirectUrl: string, orderId: string, isReused: boolean }
+ * Response: { token: string, redirectUrl: string, orderId: string, isReused: boolean }
  */
 export async function POST(request: Request) {
   // ── 1. Autentikasi ────────────────────────────────────────────────────────
@@ -38,25 +36,26 @@ export async function POST(request: Request) {
   let planCode: string;
   try {
     const body = await request.json();
-    planCode = body?.planCode;
-    if (!planCode || typeof planCode !== "string") throw new Error("invalid");
+    planCode = typeof body?.planCode === "string" ? body.planCode.trim() : "";
   } catch {
     return NextResponse.json(
-      { error: "Permintaan tidak valid. Sertakan planCode." },
+      { error: "Format request tidak valid." },
       { status: 400 }
     );
   }
 
-  // ── 3. Tolak jika user mencoba membeli paket gratis ───────────────────────
-  if (planCode === "free") {
+  if (!planCode || planCode === "free") {
     return NextResponse.json(
-      { error: "Paket gratis tidak memerlukan pembayaran." },
+      { error: "Kode paket tidak valid." },
       { status: 400 }
     );
   }
 
-  // ── 4. Tolak jika user sudah aktif di paket yang sama ────────────────────
-  const { data: existingSub } = await supabase
+  // ── 3. Ambil profil user untuk validasi email ─────────────────────────────
+  const userEmail = user.email ?? "";
+
+  // ── 4. Cek apakah user SUDAH memiliki paket ini yang sedang aktif ─────────
+  const { data: existingSub } = await supabaseAdmin
     .from("subscriptions")
     .select("plan_code, status, current_period_end")
     .eq("user_id", user.id)
@@ -74,27 +73,45 @@ export async function POST(request: Request) {
     }
   }
 
-  // ── 5. Cek apakah ada pending order yang masih bisa digunakan ────────────
-  //    (reuse session — user tidak perlu VA/QRIS baru kalau belum kadaluarsa)
-  const { data: pendingOrder } = await supabaseAdmin
+  // ── 5. Cek pending orders & Auto-Cancel tagihan lama jika ganti paket ──────
+  //    Aturan: 1 user hanya memiliki 1 tagihan aktif dalam satu waktu.
+  const { data: activePendingOrders } = await supabaseAdmin
     .from("orders")
-    .select("id, snap_token, snap_redirect_url, expires_at")
+    .select("id, plan_code, snap_token, snap_redirect_url, expires_at")
     .eq("user_id", user.id)
-    .eq("plan_code", planCode)
     .eq("status", "pending")
     .gt("expires_at", new Date().toISOString())
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
+    .order("created_at", { ascending: false });
 
-  if (pendingOrder?.snap_redirect_url) {
-    // Ada sesi lama yang masih valid — kembalikan tanpa ke Midtrans lagi
+  // A. Jika ada tagihan pending untuk PAKET YANG SAMA -> gunakan kembali (reuse)
+  const samePlanPending = activePendingOrders?.find((o) => o.plan_code === planCode);
+  if (samePlanPending?.snap_redirect_url) {
     return NextResponse.json({
-      token: pendingOrder.snap_token,
-      redirectUrl: pendingOrder.snap_redirect_url,
-      orderId: pendingOrder.id,
+      token: samePlanPending.snap_token,
+      redirectUrl: samePlanPending.snap_redirect_url,
+      orderId: samePlanPending.id,
       isReused: true,
     });
+  }
+
+  // B. Jika ada tagihan pending untuk PAKET LAIN -> batalkan semuanya di Midtrans & DB
+  const otherPlanPendingOrders =
+    activePendingOrders?.filter((o) => o.plan_code !== planCode) ?? [];
+  if (otherPlanPendingOrders.length > 0) {
+    await Promise.all(
+      otherPlanPendingOrders.map(async (oldOrder) => {
+        // Matikan nomor pembayaran di Midtrans
+        await cancelMidtransTransaction(oldOrder.id);
+        // Ubah status di database menjadi canceled
+        await supabaseAdmin
+          .from("orders")
+          .update({
+            status: "canceled",
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", oldOrder.id);
+      })
+    );
   }
 
   // ── 6. Ambil harga paket dari database ────────────────────────────────────

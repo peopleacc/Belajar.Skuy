@@ -72,6 +72,26 @@ export default function SubscriptionDetailsCard({
     router.refresh();
   }
 
+  function handleResumePayment(order: NonNullable<SubscriptionDetails["latestOrder"]>) {
+    if (order.snapToken && typeof window !== "undefined" && window.snap?.pay) {
+      window.snap.pay(order.snapToken, {
+        onSuccess: () => {
+          window.location.href = "/pricing?payment=success";
+        },
+        onPending: () => {
+          window.location.href = "/pricing?payment=pending";
+        },
+        onError: () => {
+          window.location.href = "/pricing?payment=error";
+        },
+      });
+    } else if (order.snapRedirectUrl) {
+      window.location.href = order.snapRedirectUrl;
+    } else {
+      window.location.href = "/pricing";
+    }
+  }
+
   return (
     <div className="rounded-sm bg-white p-6 shadow-card md:p-8 dark:bg-ink-800">
       {/* Header */}
@@ -97,6 +117,11 @@ export default function SubscriptionDetailsCard({
               <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
               {b.activeBadge} ({planLabel})
             </span>
+          ) : details.latestOrder?.status === "pending" ? (
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-3.5 py-1 text-xs font-bold text-amber-700 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
+              <i className="bi bi-hourglass-split text-amber-500" />
+              {b.pendingBadge}
+            </span>
           ) : details.status === "canceled" ? (
             <span className="inline-flex items-center gap-1.5 rounded-full border border-rose-200 bg-rose-50 px-3.5 py-1 text-xs font-bold text-rose-700 dark:border-rose-800 dark:bg-rose-950/40 dark:text-rose-300">
               <i className="bi bi-x-circle-fill text-rose-500" />
@@ -109,6 +134,44 @@ export default function SubscriptionDetailsCard({
           )}
         </div>
       </div>
+
+      {/* Banner Tagihan Pending (Menunggu Pembayaran) */}
+      {details.latestOrder && details.latestOrder.status === "pending" && (
+        <div className="mt-6 rounded-2xl border border-amber-200 bg-amber-50/70 p-5 dark:border-amber-900/40 dark:bg-amber-950/20">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div className="flex items-start gap-3">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-500/10 text-xl text-amber-600 dark:text-amber-400">
+                <i className="bi bi-hourglass-split"></i>
+              </span>
+              <div>
+                <h4 className="text-sm font-bold text-amber-900 dark:text-amber-200">
+                  {b.pendingCardTitle}
+                </h4>
+                <p className="mt-0.5 text-xs text-amber-700 dark:text-amber-300">
+                  {b.pendingCardDesc}
+                </p>
+                <div className="mt-2 flex flex-wrap gap-4 text-xs font-medium text-amber-800 dark:text-amber-300">
+                  <span>
+                    {b.orderId}: <strong className="font-mono">{details.latestOrder.id}</strong>
+                  </span>
+                  <span>
+                    {b.amount}: <strong>{formatAmount(details.latestOrder.amount, details.latestOrder.currency)}</strong>
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => handleResumePayment(details.latestOrder!)}
+              className="inline-flex items-center gap-2 rounded-xl bg-amber-600 px-4 py-2.5 text-xs font-bold text-white shadow-sm transition hover:bg-amber-700"
+            >
+              <i className="bi bi-wallet2"></i>
+              {b.continuePaymentBtn}
+            </button>
+          </div>
+        </div>
+      )}
 
       {cancelSuccessMsg && (
         <div className="mt-6 flex items-center gap-2 rounded-xl bg-emerald-50 p-4 text-xs font-semibold text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300">
@@ -140,8 +203,8 @@ export default function SubscriptionDetailsCard({
         </div>
       </div>
 
-      {/* Rincian Transaksi Terakhir (Jika Ada) */}
-      {details.latestOrder && (
+      {/* Rincian Transaksi Terakhir */}
+      {details.latestOrder && details.latestOrder.status !== "pending" && (
         <div className="mt-6 rounded-xl border border-border bg-surface-2/60 p-4">
           <p className="mb-3 text-xs font-bold uppercase tracking-widest text-slate-500">
             {b.lastPayment}

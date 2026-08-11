@@ -165,6 +165,44 @@ export function verifyMidtransSignature(
   }
 }
 
+/**
+ * Batalkan transaksi yang sedang pending di Midtrans.
+ *
+ * Memanggil endpoint resmi: POST https://api.midtrans.com/v2/{order_id}/cancel
+ * (atau sandbox.midtrans.com).
+ *
+ * Efeknya: Nomor Virtual Account / QRIS yang sudah dibuat langsung dinonaktifkan
+ * oleh bank/Midtrans, sehingga user tidak bisa lagi mentransfer uang ke tagihan lama.
+ */
+export async function cancelMidtransTransaction(orderId: string): Promise<boolean> {
+  const serverKey = getServerKey();
+  if (!serverKey || !orderId) return false;
+
+  const isProd = isProduction();
+  const cancelUrl = isProd
+    ? `https://api.midtrans.com/v2/${orderId}/cancel`
+    : `https://api.sandbox.midtrans.com/v2/${orderId}/cancel`;
+
+  try {
+    const res = await fetch(cancelUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: authHeader(serverKey),
+      },
+    });
+
+    if (!res.ok) {
+      const errText = await res.text().catch(() => "");
+      console.warn(`[cancelMidtransTransaction] Midtrans response for ${orderId}: ${res.status} - ${errText}`);
+    }
+    return res.ok;
+  } catch (err) {
+    console.error(`[cancelMidtransTransaction] Error canceling order ${orderId}:`, err);
+    return false;
+  }
+}
+
 // ============================================================
 // Utilitas
 // ============================================================

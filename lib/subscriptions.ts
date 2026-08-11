@@ -13,9 +13,13 @@ export type SubscriptionDetails = {
   /** Informasi transaksi / tagihan terakhir */
   latestOrder: {
     id: string;
+    planCode: string;
     amount: number;
     currency: string;
-    status: string;
+    status: "pending" | "paid" | "expired" | "failed" | string;
+    snapToken: string | null;
+    snapRedirectUrl: string | null;
+    expiresAt: string | null;
     createdAt: string;
   } | null;
 };
@@ -53,7 +57,7 @@ export async function getUserSubscriptionDetails(
         .maybeSingle(),
       supabase
         .from("orders")
-        .select("id, amount, currency, status, created_at")
+        .select("id, plan_code, amount, currency, status, snap_token, snap_redirect_url, expires_at, created_at")
         .eq("user_id", userId)
         .order("created_at", { ascending: false })
         .limit(1)
@@ -81,9 +85,13 @@ export async function getUserSubscriptionDetails(
       latestOrder: order
         ? {
             id: order.id,
+            planCode: order.plan_code,
             amount: order.amount,
             currency: order.currency,
             status: order.status,
+            snapToken: order.snap_token,
+            snapRedirectUrl: order.snap_redirect_url,
+            expiresAt: order.expires_at,
             createdAt: order.created_at,
           }
         : null,
