@@ -2,6 +2,22 @@
 
 import { useState } from "react";
 
+declare global {
+  interface Window {
+    snap?: {
+      pay: (
+        token: string,
+        options: {
+          onSuccess?: (result: unknown) => void;
+          onPending?: (result: unknown) => void;
+          onError?: (result: unknown) => void;
+          onClose?: () => void;
+        }
+      ) => void;
+    };
+  }
+}
+
 type PaymentButtonProps = {
   planCode: string;
   planName: string;
@@ -21,11 +37,8 @@ type PaymentButtonProps = {
  * 3. Jika user sudah di paket ini → tombol disabled
  * 4. Jika berbayar dan belum aktif:
  *    a. Panggil POST /api/payment/create
- *    b. Terima { redirectUrl }
- *    c. Redirect browser ke halaman pembayaran Midtrans
- *
- * REUSE PENDING SESSION ditangani di server (API route), bukan di sini.
- * Komponen ini cukup memanggil /api/payment/create dan mengikuti redirect.
+ *    b. Jika script snap.js siap → buka Modal Popup Midtrans via window.snap.pay()
+ *    c. Jika snap.js belum siap → fallback redirect ke data.redirectUrl
  */
 export default function PaymentButton({
   planCode,
@@ -73,22 +86,6 @@ export default function PaymentButton({
     );
   }
 
-declare global {
-  interface Window {
-    snap?: {
-      pay: (
-        token: string,
-        options: {
-          onSuccess?: (result: unknown) => void;
-          onPending?: (result: unknown) => void;
-          onError?: (result: unknown) => void;
-          onClose?: () => void;
-        }
-      ) => void;
-    };
-  }
-}
-
   // ── Handler checkout pembayaran ───────────────────────────────────────────
   async function handleCheckout() {
     if (!isLoggedIn) {
@@ -115,7 +112,7 @@ declare global {
         return;
       }
 
-      // Jika snap.js sudah dimuat, buka popup modal di halaman pricing
+      // Jika snap.js sudah dimuat, buka popup modal langsung di halaman pricing
       if (data?.token && typeof window !== "undefined" && window.snap?.pay) {
         window.snap.pay(data.token, {
           onSuccess: function () {
@@ -147,6 +144,7 @@ declare global {
   return (
     <div className="flex flex-col gap-2">
       <button
+        type="button"
         onClick={handleCheckout}
         disabled={loading}
         className={`${baseClass} ${primaryClass} ${loading ? loadingClass : ""}`}
