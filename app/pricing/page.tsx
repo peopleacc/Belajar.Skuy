@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { cookies } from "next/headers";
 import Link from "next/link";
+import Script from "next/script";
 import SiteHeader from "@/components/SiteHeader";
 import SiteFooter from "@/components/SiteFooter";
 import PricingPlans from "@/components/PricingPlans";
@@ -13,6 +14,19 @@ export const metadata: Metadata = {
   description:
     "Bandingkan paket Gratis, Premium, dan Pro belajar.skuy. Mulai gratis tanpa kartu kredit.",
 };
+
+const isProd =
+  process.env.NEXT_PUBLIC_MIDTRANS_IS_PRODUCTION === "true" ||
+  process.env.MIDTRANS_IS_PRODUCTION === "true";
+
+const snapJsUrl = isProd
+  ? "https://app.midtrans.com/snap/snap.js"
+  : "https://app.sandbox.midtrans.com/snap/snap.js";
+
+const snapClientKey =
+  process.env.NEXT_PUBLIC_MIDTRANS_CLIENT_KEY ??
+  process.env.MIDTRANS_CLIENT_KEY ??
+  "";
 
 // Rounding + shadow card DISAMAKAN PERSIS dengan card dashboard.
 const CARD = "rounded-sm bg-white shadow-card";
@@ -51,6 +65,15 @@ export default async function PricingPage() {
 
   return (
     <div className="min-h-screen bg-dominant text-slate-800">
+      {/* Midtrans Snap Popup Script */}
+      {snapClientKey && (
+        <Script
+          src={snapJsUrl}
+          data-client-key={snapClientKey}
+          strategy="afterInteractive"
+        />
+      )}
+
       {/* Halaman ini bukan landing, jadi anchor seksi harus balik ke "/" dulu */}
       <SiteHeader lang={lang} t={t} anchorBase="/" user={user} />
 

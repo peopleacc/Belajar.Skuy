@@ -78,7 +78,7 @@ export async function POST(request: Request) {
   //    (reuse session — user tidak perlu VA/QRIS baru kalau belum kadaluarsa)
   const { data: pendingOrder } = await supabaseAdmin
     .from("orders")
-    .select("id, snap_redirect_url, expires_at")
+    .select("id, snap_token, snap_redirect_url, expires_at")
     .eq("user_id", user.id)
     .eq("plan_code", planCode)
     .eq("status", "pending")
@@ -90,6 +90,7 @@ export async function POST(request: Request) {
   if (pendingOrder?.snap_redirect_url) {
     // Ada sesi lama yang masih valid — kembalikan tanpa ke Midtrans lagi
     return NextResponse.json({
+      token: pendingOrder.snap_token,
       redirectUrl: pendingOrder.snap_redirect_url,
       orderId: pendingOrder.id,
       isReused: true,
@@ -179,6 +180,7 @@ export async function POST(request: Request) {
   }
 
   return NextResponse.json({
+    token: snapResult.token,
     redirectUrl: snapResult.redirect_url,
     orderId,
     isReused: false,

@@ -73,6 +73,22 @@ export default function PaymentButton({
     );
   }
 
+declare global {
+  interface Window {
+    snap?: {
+      pay: (
+        token: string,
+        options: {
+          onSuccess?: (result: unknown) => void;
+          onPending?: (result: unknown) => void;
+          onError?: (result: unknown) => void;
+          onClose?: () => void;
+        }
+      ) => void;
+    };
+  }
+}
+
   // ── Handler checkout pembayaran ───────────────────────────────────────────
   async function handleCheckout() {
     if (!isLoggedIn) {
@@ -99,8 +115,24 @@ export default function PaymentButton({
         return;
       }
 
-      if (data?.redirectUrl) {
-        // Arahkan ke halaman pembayaran Midtrans
+      // Jika snap.js sudah dimuat, buka popup modal di halaman pricing
+      if (data?.token && typeof window !== "undefined" && window.snap?.pay) {
+        window.snap.pay(data.token, {
+          onSuccess: function () {
+            window.location.href = "/pricing?payment=success";
+          },
+          onPending: function () {
+            window.location.href = "/pricing?payment=pending";
+          },
+          onError: function () {
+            window.location.href = "/pricing?payment=error";
+          },
+          onClose: function () {
+            console.log("Popup pembayaran ditutup oleh user.");
+          },
+        });
+      } else if (data?.redirectUrl) {
+        // Fallback redirect jika script snap.js belum selesai dimuat
         window.location.href = data.redirectUrl;
       } else {
         setError("Respons tidak valid dari server. Silakan coba lagi.");
