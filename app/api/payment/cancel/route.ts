@@ -80,7 +80,10 @@ export async function POST() {
 
   // ── 4. Invalidate cache Redis di Express Service ─────────────────────────
   try {
-    await apiFetch("/api/entitlements/invalidate", { userId: user.id });
+    await apiFetch("/api/entitlements/invalidate", {
+      method: "POST",
+      body: JSON.stringify({ userId: user.id }),
+    });
   } catch {
     // Tidak memblokir respon sukses jika Express sedang offline — TTL Redis 60 detik
   }
