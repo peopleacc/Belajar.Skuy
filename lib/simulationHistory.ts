@@ -26,41 +26,60 @@ export type SessionScores = {
   overall: number | null;
   content: number | null;
   delivery: number | null;
-  detail?: { total_ms?: number | null } | null;
+  detail?: {
+    total_ms?: number | null;
+    wpm_avg?: number | null;
+    filler_per_min?: number | null;
+    eye_contact?: number | null;
+    posture?: number | null;
+  } | null;
+} | null;
+
+export type ReportFeedback = {
+  summary?: string;
+  qualitative_note?: string;
+  strengths?: string[];
+  improvements?: string[];
+  unavailable_reason?: string;
 } | null;
 
 export type ReportRow = {
   session_id: string;
   scores: SessionScores;
+  feedback?: ReportFeedback;
 };
 
-/** Baris sesi yang sudah dipasangkan dengan skornya (kalau ada laporannya). */
+/** Baris sesi yang sudah dipasangkan dengan skor dan feedbacknya (kalau ada laporannya). */
 export type HistoryRow = {
   session: SessionRow;
   scores: SessionScores;
+  feedback?: ReportFeedback;
 };
 
-export type SessionKind = "presentation" | "interview" | "qa";
+export type SessionKind = "presentation" | "interview" | "qa" | "wawancara";
 
 /**
  * Sesi tanya-jawab secara TEKNIS bertipe 'interview' (Fitur BF) — yang
  * membedakan cuma jejak `fromSessionId` ke presentasi asalnya.
  */
 export function sessionKind(s: SessionRow): SessionKind {
+  if (s.type === "wawancara") return "wawancara";
   if (s.type === "interview" && s.context?.fromSessionId) return "qa";
   return s.type === "interview" ? "interview" : "presentation";
 }
 
 export const KIND_LABEL: Record<SessionKind, string> = {
   presentation: "Simulasi Presentasi",
-  interview: "Wawancara",
+  interview: "Interview Kerja",
   qa: "Tanya-Jawab Presentasi",
+  wawancara: "Wawancara",
 };
 
 export const KIND_ICON: Record<SessionKind, string> = {
   presentation: "bi-easel2-fill",
-  interview: "bi-chat-quote-fill",
+  interview: "bi-briefcase-fill",
   qa: "bi-question-circle-fill",
+  wawancara: "bi-mic-fill",
 };
 
 export const STATUS_BADGE: Record<string, { label: string; cls: string }> = {
@@ -97,16 +116,23 @@ export async function fetchSimulationHistory(
       .order("created_at", { ascending: false })
       .limit(opts.limit ?? 200),
     // RLS "laporan sesi sendiri dibaca" sudah membatasi ke milik user ini.
-    supabase.from("simulation_reports").select("session_id, scores"),
+    supabase.from("simulation_reports").select("session_id, scores, feedback"),
   ]);
 
   const rows = (sessions ?? []) as SessionRow[];
-  const reportMap = new Map<string, SessionScores>(
-    ((reports ?? []) as ReportRow[]).map((r) => [r.session_id, r.scores])
+  const reportMap = new Map<string, { scores: SessionScores; feedback?: ReportFeedback }>(
+    ((reports ?? []) as ReportRow[]).map((r) => [r.session_id, { scores: r.scores, feedback: r.feedback ?? null }])
   );
 
   const filtered = opts.kind ? rows.filter((s) => sessionKind(s) === opts.kind) : rows;
-  return filtered.map((session) => ({ session, scores: reportMap.get(session.id) ?? null }));
+  return filtered.map((session) => {
+    const reportData = reportMap.get(session.id);
+    return {
+      session,
+      scores: reportData?.scores ?? null,
+      feedback: reportData?.feedback ?? null,
+    };
+  });
 }
 
 /**

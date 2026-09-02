@@ -29,7 +29,7 @@ export async function POST(request: Request) {
   // type & context diteruskan apa adanya dari body; Express sendiri yang
   // memvalidasi per tipe (slides utk presentasi, context utk wawancara).
   const body = await request.json().catch(() => ({}));
-  const type = body.type === "interview" ? "interview" : "presentation";
+  const type = body.type === "interview" ? "interview" : body.type === "wawancara" ? "wawancara" : "presentation";
   try {
     const res = await apiFetchSimulation("/api/simulation/session", {
       method: "POST",

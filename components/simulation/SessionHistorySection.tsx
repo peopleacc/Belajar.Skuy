@@ -6,6 +6,8 @@ import {
   fetchSimulationHistory,
   summarize,
   formatDuration,
+  KIND_LABEL,
+  KIND_ICON,
   type SessionKind,
 } from "@/lib/simulationHistory";
 
@@ -34,13 +36,13 @@ export default async function SessionHistorySection({ kind }: { kind: SessionKin
   const s = summarize(rows);
 
   const isPresentation = kind === "presentation";
-  const heading = isPresentation ? "Hasil Presentasi Sebelumnya" : "Hasil Wawancara Sebelumnya";
+  const heading = `Hasil ${KIND_LABEL[kind] ?? "Simulasi"} Sebelumnya`;
 
   const stats: Stat[] = [
     {
       label: "Total Sesi",
       value: String(s.total),
-      icon: isPresentation ? "bi-easel2-fill" : "bi-chat-quote-fill",
+      icon: KIND_ICON[kind] ?? "bi-clipboard2-data-fill",
     },
     {
       label: "Rata-rata Skor",

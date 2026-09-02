@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import SidebarShell, { sidebarItemClass } from "@/components/SidebarShell";
+import SidebarShell, { sidebarItemClass, useSidebar } from "@/components/SidebarShell";
 
 // Generate Course + My Course + Study Library digabung jadi grup "Course" (dropdown).
 const COURSE_CHILDREN = [
@@ -12,18 +12,7 @@ const COURSE_CHILDREN = [
   { label: "Study Library", href: "/dashboard/library", icon: <i className="bi bi-book-half"></i> },
 ];
 
-// Fitur CE (planning-update-9) — logo, footer paket/akun, & sign-out sekarang di
-// `SidebarShell.tsx` (dipakai bersama `SimulationSidebar`). Yang tersisa di sini
-// murni struktur nav course (dropdown) — TIDAK ADA perubahan perilaku dari versi
-// sebelum diekstrak.
-export default function Sidebar({
-  username,
-  planCode = "free",
-}: {
-  username: string;
-  // Dari tabel `subscriptions` (migration 006), sudah memperhitungkan masa berlaku.
-  planCode?: string;
-}) {
+function CourseNavItems() {
   const pathname = usePathname();
 
   const courseActive = COURSE_CHILDREN.some(
@@ -32,9 +21,12 @@ export default function Sidebar({
   const [courseOpen, setCourseOpen] = useState(courseActive);
 
   return (
-    <SidebarShell username={username} planCode={planCode} ctaHref="/dashboard/generate" ctaLabel="+ New Course">
+    <>
       {/* Dashboard */}
-      <Link href="/dashboard" className={sidebarItemClass(pathname === "/dashboard")}>
+      <Link
+        href="/dashboard"
+        className={sidebarItemClass(pathname === "/dashboard")}
+      >
         <span className="text-base"><i className="bi bi-clipboard2-data-fill"></i></span>
         Dashboard
       </Link>
@@ -81,6 +73,20 @@ export default function Sidebar({
         <span className="text-base"><i className="bi bi-pencil-square"></i></span>
         Quizzes
       </Link>
+    </>
+  );
+}
+
+export default function Sidebar({
+  username,
+  planCode = "free",
+}: {
+  username: string;
+  planCode?: string;
+}) {
+  return (
+    <SidebarShell username={username} planCode={planCode} ctaHref="/dashboard/generate" ctaLabel="+ New Course">
+      <CourseNavItems />
     </SidebarShell>
   );
 }

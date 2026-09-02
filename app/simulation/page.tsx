@@ -58,7 +58,7 @@ export default async function SimulationHome({
   const avgDelivery = avg(deliveryVals);
 
   // ── Widget 3: distribusi jenis sesi ──
-  const kindCounts: Record<SessionKind, number> = { presentation: 0, interview: 0, qa: 0 };
+  const kindCounts: Record<SessionKind, number> = { presentation: 0, interview: 0, qa: 0, wawancara: 0 };
   for (const r of history) kindCounts[sessionKind(r.session)]++;
   const totalKind = history.length;
 
