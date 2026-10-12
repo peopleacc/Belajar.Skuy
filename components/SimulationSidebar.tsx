@@ -2,11 +2,43 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import SidebarShell, { sidebarItemClass } from "@/components/SidebarShell";
+import SidebarShell, { sidebarItemClass, useSidebar } from "@/components/SidebarShell";
 
-// Fitur CE (planning-update-9) — sidebar dashboard simulasi. Sengaja TIDAK
-// menyalin Sidebar.tsx: memakai SidebarShell yang sama, cuma isi <nav> beda
-// (di sini tanpa dropdown — cuma 3 tautan datar).
+function SimulationNavItems() {
+  const pathname = usePathname();
+
+  const isDashboard = pathname === "/simulation";
+  const isNew = pathname === "/simulation/new";
+  const isInterview = pathname === "/simulation/interview" || pathname.startsWith("/simulation/run/");
+  const isWawancara = pathname === "/simulation/wawancara";
+  const isResults = pathname === "/simulation/results";
+
+  const items = [
+    { href: "/simulation", label: "Dashboard", active: isDashboard, icon: "bi-clipboard2-data-fill" },
+    { href: "/simulation/new", label: "Presentasi", active: isNew, icon: "bi-easel2-fill" },
+    { href: "/simulation/interview", label: "Interview", active: isInterview, icon: "bi-briefcase-fill" },
+    { href: "/simulation/wawancara", label: "Wawancara", active: isWawancara, icon: "bi-mic-fill" },
+    { href: "/simulation/results", label: "Rekap Hasil", active: isResults, icon: "bi-table" },
+  ];
+
+  return (
+    <>
+      {items.map((item) => (
+        <Link
+          key={item.href}
+          href={item.href}
+          className={sidebarItemClass(item.active)}
+        >
+          <span className="text-base">
+            <i className={`bi ${item.icon}`}></i>
+          </span>
+          {item.label}
+        </Link>
+      ))}
+    </>
+  );
+}
+
 export default function SimulationSidebar({
   username,
   planCode = "free",
@@ -14,28 +46,9 @@ export default function SimulationSidebar({
   username: string;
   planCode?: string;
 }) {
-  const pathname = usePathname();
-
-  const isNew = pathname === "/simulation/new";
-  const isInterview =
-    pathname === "/simulation/interview" || pathname.startsWith("/simulation/run/");
-
   return (
     <SidebarShell username={username} planCode={planCode} ctaHref="/simulation" ctaLabel="+ Sesi Baru">
-      <Link href="/simulation" className={sidebarItemClass(pathname === "/simulation")}>
-        <span className="text-base"><i className="bi bi-clipboard2-data-fill"></i></span>
-        Dashboard
-      </Link>
-
-      <Link href="/simulation/new" className={sidebarItemClass(isNew)}>
-        <span className="text-base"><i className="bi bi-easel2-fill"></i></span>
-        Presentasi
-      </Link>
-
-      <Link href="/simulation/interview" className={sidebarItemClass(isInterview)}>
-        <span className="text-base"><i className="bi bi-chat-quote-fill"></i></span>
-        Wawancara
-      </Link>
+      <SimulationNavItems />
     </SidebarShell>
   );
 }
