@@ -15,11 +15,10 @@ export type MaterialSource = {
   chapters: { id: string; number: number; title: string }[];
 };
 
-type SourceTab = "text" | "pdf" | "materials";
+type SourceTab = "text" | "pdf" | "materials" | "own_questions";
 const MAX_CHAPTERS = 3;
 
-// Form kuis kustom (Modul 10 + Fitur N): teks bebas, file PDF, ATAU bab course sendiri yang
-// sudah digenerate (maks 3 bab, dari 1 course).
+// Form kuis kustom (Modul 10 + Fitur N): teks bebas, file PDF, bab course sendiri, ATAU tulis soal sendiri (jawaban oleh AI).
 export default function CustomQuizForm({
   materialSources,
   voiceLocked = false,
@@ -31,6 +30,9 @@ export default function CustomQuizForm({
   const fileRef = useRef<HTMLInputElement>(null);
   const [tab, setTab] = useState<SourceTab>("text");
   const [text, setText] = useState("");
+  const [ownQuestionsText, setOwnQuestionsText] = useState("");
+  const [questionsList, setQuestionsList] = useState<string[]>(["", ""]);
+  const [inputMode, setInputMode] = useState<"fields" | "bulk">("fields");
   const [fileName, setFileName] = useState<string | null>(null);
   const [questionCount, setQuestionCount] = useState(10);
   const [quizTypes, setQuizTypes] = useState<QuizTypeCounts>({ mcq: 10, essay: 0, voice: 0 });
@@ -43,6 +45,24 @@ export default function CustomQuizForm({
     () => materialSources.find((m) => m.moduleId === selectedModuleId) ?? null,
     [materialSources, selectedModuleId]
   );
+
+  function addQuestionField() {
+    if (questionsList.length < 20) {
+      setQuestionsList((prev) => [...prev, ""]);
+    }
+  }
+
+  function removeQuestionField(index: number) {
+    setQuestionsList((prev) => prev.filter((_, i) => i !== index));
+  }
+
+  function updateQuestionField(index: number, val: string) {
+    setQuestionsList((prev) => {
+      const next = [...prev];
+      next[index] = val;
+      return next;
+    });
+  }
 
   function toggleChapter(id: string) {
     setSelectedChapterIds((prev) => {
@@ -60,6 +80,50 @@ export default function CustomQuizForm({
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     const file = fileRef.current?.files?.[0];
+
+    if (tab === "own_questions") {
+      let validQuestions: string[] = [];
+      if (inputMode === "fields") {
+        validQuestions = questionsList.map((q) => q.trim()).filter(Boolean);
+      } else {
+        validQuestions = ownQuestionsText
+          .split("\n")
+          .map((s) => s.trim())
+          .filter(Boolean);
+      }
+
+      if (validQuestions.length === 0) {
+        setError("Isi minimal 1 soal dulu ya.");
+        return;
+      }
+
+      setLoading(true);
+      setError(null);
+
+      const form = new FormData();
+      form.append("ownQuestionsText", JSON.stringify(validQuestions));
+      form.append("questionCount", String(validQuestions.length));
+      form.append(
+        "quizTypes",
+        JSON.stringify({ mcq: validQuestions.length, essay: 0, voice: 0 })
+      );
+
+      try {
+        const res = await fetch("/api/quiz/custom", { method: "POST", body: form });
+        const data = await res.json();
+        if (!res.ok) {
+          setError(data.error ?? "Gagal membuat kuis. Coba lagi ya.");
+          setLoading(false);
+          return;
+        }
+        router.push(`/dashboard/quizzes/${data.quiz.id}`);
+        router.refresh();
+      } catch {
+        setError("Tidak bisa terhubung ke server. Coba lagi ya.");
+        setLoading(false);
+      }
+      return;
+    }
 
     if (tab === "materials" && selectedChapterIds.length === 0) {
       setError("Pilih minimal 1 bab ya.");
@@ -108,14 +172,15 @@ export default function CustomQuizForm({
     { key: "text", label: "📋 Teks" },
     { key: "pdf", label: "📄 PDF" },
     { key: "materials", label: "📚 Dari Materi Saya" },
+    { key: "own_questions", label: "✍️ Tulis Soal" },
   ];
 
   return (
     <form onSubmit={handleSubmit} className="rounded-sm bg-white p-6 shadow-card">
       <h2 className="text-lg font-bold">Bikin Quiz Kustom</h2>
       <p className="mt-1 text-sm text-slate-500">
-        Tempel teks materi, unggah PDF, atau pilih bab dari course yang sudah kamu generate —
-        AI membuat soal kuis dari sumber pilihanmu.
+        Tempel teks materi, unggah PDF, pilih bab course, atau tulis soalmu sendiri —
+        AI menyusun kuis dan jawabannya dari sumber pilihanmu.
       </p>
 
       <div className="mt-4 flex flex-wrap gap-2">
@@ -137,6 +202,104 @@ export default function CustomQuizForm({
           </button>
         ))}
       </div>
+
+      {tab === "own_questions" && (
+        <div className="mt-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => setInputMode("fields")}
+                className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition ${
+                  inputMode === "fields"
+                    ? "bg-brand-500 text-white"
+                    : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                }`}
+              >
+                📝 Per Input Soal
+              </button>
+              <button
+                type="button"
+                onClick={() => setInputMode("bulk")}
+                className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition ${
+                  inputMode === "bulk"
+                    ? "bg-brand-500 text-white"
+                    : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                }`}
+              >
+                📋 Tempel Sekaligus
+              </button>
+            </div>
+            <span className="text-xs font-semibold text-brand-600">
+              Total:{" "}
+              {inputMode === "fields"
+                ? questionsList.filter((q) => q.trim()).length
+                : ownQuestionsText.split("\n").map((s) => s.trim()).filter(Boolean).length}{" "}
+              soal
+            </span>
+          </div>
+
+          {inputMode === "fields" ? (
+            <div className="space-y-2.5">
+              {questionsList.map((q, idx) => (
+                <div key={idx} className="flex items-center gap-2">
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-brand-50 text-xs font-bold text-brand-600">
+                    #{idx + 1}
+                  </span>
+                  <input
+                    type="text"
+                    value={q}
+                    onChange={(e) => updateQuestionField(idx, e.target.value)}
+                    disabled={loading}
+                    placeholder={`Ketik pertanyaan nomor ${idx + 1}...`}
+                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm outline-none transition focus:border-brand-400 focus:bg-white focus:ring-2 focus:ring-brand-100 disabled:opacity-60"
+                  />
+                  {questionsList.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => removeQuestionField(idx)}
+                      disabled={loading}
+                      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-slate-200 text-slate-400 transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50"
+                      title="Hapus soal ini"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+              ))}
+
+              {questionsList.length < 20 && (
+                <button
+                  type="button"
+                  onClick={addQuestionField}
+                  disabled={loading}
+                  className="mt-1 flex items-center gap-1.5 rounded-xl border border-dashed border-brand-300 bg-brand-50/50 px-4 py-2 text-xs font-semibold text-brand-600 transition hover:bg-brand-50"
+                >
+                  + Tambah Soal
+                </button>
+              )}
+            </div>
+          ) : (
+            <textarea
+              value={ownQuestionsText}
+              onChange={(e) => setOwnQuestionsText(e.target.value)}
+              rows={6}
+              disabled={loading}
+              placeholder={`Tulis atau tempel daftar soal kamu di sini (1 soal per baris)...
+
+Contoh:
+Apa fungsi utama organel mitokondria pada sel?
+Jelaskan perbedaan antara fotosintesis dan respirasi seluler!
+Sebutkan dan jelaskan Hukum I Newton!`}
+              className="w-full resize-none rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none transition focus:border-brand-400 focus:bg-white focus:ring-2 focus:ring-brand-100 disabled:opacity-60"
+            />
+          )}
+
+          <p className="text-[11px] text-slate-500">
+            💡 AI tidak akan menambah/mengubah soal. AI hanya bertugas membuatkan pilihan jawaban (PG A/B/C/D), kunci jawaban, dan pembahasan lengkap untuk soal-soal di atas!
+          </p>
+        </div>
+      )}
 
       {tab === "text" && (
         <textarea
@@ -235,40 +398,44 @@ export default function CustomQuizForm({
         </div>
       )}
 
-      <div className="mt-4">
-        <div className="mb-1 flex justify-between text-xs font-semibold text-slate-600">
-          <span>Jumlah soal</span>
-          <span className="text-brand-600">{questionCount}</span>
-        </div>
-        <input
-          type="range"
-          min={5}
-          max={20}
-          value={questionCount}
-          disabled={loading}
-          onChange={(e) => {
-            const n = Number(e.target.value);
-            setQuestionCount(n);
-            // Fitur T — tipe yang aktif dipertahankan saat jumlah soal berubah.
-            setQuizTypes((prev) => rebalanceQuizTypes(prev, n, enabledFromCounts(prev)));
-          }}
-          className="w-full accent-brand-500"
-        />
-        <div className="flex justify-between text-[10px] text-slate-400">
-          <span>5</span>
-          <span>20</span>
-        </div>
-      </div>
+      {tab !== "own_questions" && (
+        <>
+          <div className="mt-4">
+            <div className="mb-1 flex justify-between text-xs font-semibold text-slate-600">
+              <span>Jumlah soal</span>
+              <span className="text-brand-600">{questionCount}</span>
+            </div>
+            <input
+              type="range"
+              min={5}
+              max={20}
+              value={questionCount}
+              disabled={loading}
+              onChange={(e) => {
+                const n = Number(e.target.value);
+                setQuestionCount(n);
+                // Fitur T — tipe yang aktif dipertahankan saat jumlah soal berubah.
+                setQuizTypes((prev) => rebalanceQuizTypes(prev, n, enabledFromCounts(prev)));
+              }}
+              className="w-full accent-brand-500"
+            />
+            <div className="flex justify-between text-[10px] text-slate-400">
+              <span>5</span>
+              <span>20</span>
+            </div>
+          </div>
 
-      <div className="mt-4">
-        <QuizTypeFields
-          total={questionCount}
-          value={quizTypes}
-          onChange={setQuizTypes}
-          disabled={loading}
-          voiceLocked={voiceLocked}
-        />
-      </div>
+          <div className="mt-4">
+            <QuizTypeFields
+              total={questionCount}
+              value={quizTypes}
+              onChange={setQuizTypes}
+              disabled={loading}
+              voiceLocked={voiceLocked}
+            />
+          </div>
+        </>
+      )}
 
       <div className="mt-4 flex items-center justify-end">
         <button

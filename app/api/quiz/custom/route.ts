@@ -31,6 +31,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Form tidak valid." }, { status: 400 });
   }
 
+  const ownQuestionsText = incoming.get("ownQuestionsText");
   const text = incoming.get("text");
   const file = incoming.get("file");
   const contentIdsRaw = incoming.get("contentIds");
@@ -44,6 +45,9 @@ export async function POST(request: Request) {
   }
   if (typeof quizTypesRaw === "string" && quizTypesRaw.trim()) {
     outgoing.append("quizTypes", quizTypesRaw);
+  }
+  if (typeof ownQuestionsText === "string" && ownQuestionsText.trim()) {
+    outgoing.append("ownQuestionsText", ownQuestionsText);
   }
 
   // Fitur N — sumber "dari materi saya" (pilih bab course yang sudah digenerate).
@@ -77,9 +81,14 @@ export async function POST(request: Request) {
   if (typeof text === "string" && text.trim()) outgoing.append("text", text);
   if (file instanceof File && file.size > 0) outgoing.append("file", file, file.name);
 
-  if (!outgoing.has("contentIds") && !outgoing.has("text") && !outgoing.has("file")) {
+  if (
+    !outgoing.has("ownQuestionsText") &&
+    !outgoing.has("contentIds") &&
+    !outgoing.has("text") &&
+    !outgoing.has("file")
+  ) {
     return NextResponse.json(
-      { error: "Isi teks materi, unggah PDF, atau pilih bab dari materimu dulu ya." },
+      { error: "Tulis soal, isi teks materi, unggah PDF, atau pilih bab dari materimu dulu ya." },
       { status: 400 }
     );
   }
