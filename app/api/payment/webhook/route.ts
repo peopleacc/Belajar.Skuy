@@ -74,7 +74,7 @@ export async function POST(request: Request) {
   //    Jika custom_field tidak ada (kasus edge), fallback ke data dari DB.
   const { data: orderRow, error: orderErr } = await supabaseAdmin
     .from("orders")
-    .select("id, user_id, plan_code, status")
+    .select("id, user_id, plan_code, status, duration_months")
     .eq("id", orderId)
     .maybeSingle();
 
@@ -107,10 +107,11 @@ export async function POST(request: Request) {
       .eq("id", orderId);
 
     // Aktifkan / perbarui langganan user di tabel subscriptions.
-    // upsert: jika baris belum ada (user baru bayar pertama kali), buat baru.
-    //         jika sudah ada (upgrade/perbarui paket), timpa data lama.
+    // Durasi dinamis berdasarkan duration_months (1 bulan = 30 hari, 6 bulan = 180 hari, 1 tahun = 365 hari)
+    const months = orderRow?.duration_months ?? 1;
+    const daysToAdd = months === 12 ? 365 : months * 30;
     const periodEnd = new Date(
-      Date.now() + 30 * 24 * 60 * 60 * 1000 // 30 hari dari sekarang
+      Date.now() + daysToAdd * 24 * 60 * 60 * 1000
     ).toISOString();
 
     const { error: subErr } = await supabaseAdmin

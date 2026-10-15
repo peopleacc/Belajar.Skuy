@@ -1,12 +1,12 @@
 "use client";
 
-import { useState, Suspense } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { createClient, supabaseConfigured } from "@/lib/supabase/client";
 import { recordLogin } from "@/lib/loginEvents";
 
-function  GoogleIcon() {
+function GoogleIcon() {
   return (
     <svg className="h-4 w-4" viewBox="0 0 24 24" aria-hidden>
       <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.27-4.74 3.27-8.1z" />
@@ -27,6 +27,33 @@ function LoginForm() {
   );
   const [loading, setLoading] = useState(false);
 
+  // Target redirect default adalah /portal
+  const nextTarget = searchParams.get("next") || "/portal";
+
+  // Tangani redirect otomatis jika sesi sudah aktif (misal setelah OAuth Google kembali)
+  useEffect(() => {
+    if (!supabaseConfigured) return;
+    const supabase = createClient();
+
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user) {
+        router.push(nextTarget);
+        router.refresh();
+      }
+    });
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((event, session) => {
+      if (session?.user && (event === "SIGNED_IN" || event === "INITIAL_SESSION")) {
+        router.push(nextTarget);
+        router.refresh();
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, [router, nextTarget]);
+
   async function signInWithEmail(e: React.FormEvent) {
     e.preventDefault();
     if (!supabaseConfigured) return;
@@ -42,21 +69,32 @@ function LoginForm() {
     if (data.user) await recordLogin(supabase, data.user.id); // Fitur DM
     // Fitur DI — mendarat di /portal, bukan /dashboard: sekarang ada DUA mode
     // (course & simulasi), jadi user memilih dulu, tidak diasumsikan.
-    router.push("/portal");
+    router.push(nextTarget);
     router.refresh();
   }
 
   async function signInWithGoogle() {
     if (!supabaseConfigured) return;
     const supabase = createClient();
+    // Arahkan callback ke /auth/callback dengan next=/portal eksplisit
+    const redirectUrl = `${window.location.origin}/auth/callback?next=${encodeURIComponent(nextTarget)}`;
     await supabase.auth.signInWithOAuth({
       provider: "google",
-      options: { redirectTo: `${location.origin}/auth/callback` },
+      options: { redirectTo: redirectUrl },
     });
   }
 
   return (
     <div className="w-full max-w-sm">
+      {/* Backlink ke Landing Page (Poin 5) */}
+      <Link
+        href="/"
+        className="mb-6 inline-flex items-center gap-2 text-xs font-medium text-slate-500 transition hover:text-brand-500"
+      >
+        <i className="bi bi-arrow-left text-sm"></i>
+        Kembali ke Beranda
+      </Link>
+
       <h2 className="text-2xl font-bold text-slate-900">Welcome Back</h2>
       <p className="mt-1 text-sm text-slate-500">
         Masuk untuk melanjutkan perjalanan belajarmu.
@@ -142,27 +180,28 @@ export default function LoginPage() {
   return (
     <main className="flex min-h-screen items-center justify-center bg-ink-900 p-6 [background-image:radial-gradient(circle,#2a2547_1px,transparent_1px)] [background-size:24px_24px]">
       <div className="grid w-full max-w-4xl overflow-hidden rounded-sm bg-white shadow-2xl md:grid-cols-[1.1fr_1fr]">
-        {/* Panel kiri gelap */}
-        <div className="relative hidden flex-col justify-between bg-gradient-to-b from-ink-800 to-ink-900 p-10 md:flex">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-accent text-lg font-bold text-white">
-            ✦
-          </div>
-          <div>
-            <p className="max-w-xs text-lg font-medium leading-relaxed text-light">
-              Ubah materi mentah jadi pengetahuan terstruktur dalam hitungan detik.
-              Profesional, intuitif, dibangun untuk masa depan pendidikan.
-            </p>
-            <div className="mt-8 rounded-2xl bg-light/5 p-4 backdrop-blur">
-              <p className="text-sm font-semibold text-light">Advanced AI Theory</p>
-              <p className="text-xs text-light-muted">Modul 1 · Foundations</p>
-              <div className="mt-3 h-1.5 w-full rounded-full bg-light/10">
-                <div className="h-1.5 w-2/3 rounded-full bg-mint" />
-              </div>
-              <p className="mt-1.5 text-right text-[10px] text-mint">66%</p>
+        {/* Panel kiri gelap dengan logo buku besar (Poin 1 & 4) */}
+        <div className="relative hidden flex-col items-center justify-center bg-gradient-to-b from-ink-800 to-ink-900 p-10 md:flex">
+          <Link
+            href="/"
+            title="Kembali ke Beranda"
+            className="group flex flex-col items-center text-center transition"
+          >
+            <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-white text-ink-900 shadow-xl shadow-blue-500/10 ring-1 ring-white/20 transition duration-300 group-hover:scale-105 group-hover:bg-white/95">
+              <i className="bi bi-book text-2xl"></i>
             </div>
-          </div>
-          <p className="text-xs text-light-muted">
-            belajar<span className="text-accent">.skuy</span> © 2026
+            <h3 className="mt-6 text-2xl font-bold tracking-tight">
+              <span className="text-white">belajar</span>
+              <span className="text-white">.skuy</span>
+            </h3>
+            <p className="mt-2 max-w-xs text-xs text-light-muted">
+              Platform Edukasi AI & Simulasi Terintegrasi
+            </p>
+          </Link>
+
+          <p className="absolute bottom-6 text-xs text-light-muted">
+            <span className="text-white">belajar</span>
+            <span className="text-white">.skuy</span> © 2026
           </p>
         </div>
 

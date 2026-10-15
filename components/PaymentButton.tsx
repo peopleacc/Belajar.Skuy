@@ -26,6 +26,7 @@ type PaymentButtonProps = {
   isPopular: boolean;
   ctaText: string;
   currentCtaText: string;
+  durationMonths?: number;
 };
 
 /**
@@ -36,7 +37,7 @@ type PaymentButtonProps = {
  * 2. Jika paket = 'free' → redirect ke /register (tidak ada pembayaran)
  * 3. Jika user sudah di paket ini → tombol disabled
  * 4. Jika berbayar dan belum aktif:
- *    a. Panggil POST /api/payment/create
+ *    a. Panggil POST /api/payment/create dengan planCode & durationMonths
  *    b. Jika script snap.js siap → buka Modal Popup Midtrans via window.snap.pay()
  *    c. Jika snap.js belum siap → fallback redirect ke data.redirectUrl
  */
@@ -48,6 +49,7 @@ export default function PaymentButton({
   isPopular,
   ctaText,
   currentCtaText,
+  durationMonths = 1,
 }: PaymentButtonProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -100,7 +102,7 @@ export default function PaymentButton({
       const res = await fetch("/api/payment/create", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ planCode }),
+        body: JSON.stringify({ planCode, durationMonths }),
       });
 
       const data = await res.json().catch(() => ({}));

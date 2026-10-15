@@ -67,7 +67,9 @@ export default async function QuizzesPage() {
         <h2 className="mb-4 text-lg font-bold">{t.myCustom}</h2>
         {quizzes.length === 0 ? (
           <div className="rounded-sm border-2 border-dashed border-slate-200 bg-white/60 px-6 py-10 text-center">
-            <p className="text-2xl">🧩</p>
+            <div className="mx-auto mb-2 flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-50 text-2xl text-brand-500">
+              <i className="bi bi-puzzle-fill"></i>
+            </div>
             <p className="mt-2 font-semibold text-slate-700">{t.emptyTitle}</p>
             <p className="mt-1 text-sm text-slate-400">{t.emptyBody}</p>
           </div>

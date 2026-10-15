@@ -20,17 +20,26 @@ export default function UserMenu({
   username: string;
   avatarUrl: string | null;
   // Dibiarkan opsional supaya dashboard (belum di-i18n) tetap pakai teks bawaan.
-  labels?: { portal: string; editProfile: string; signOut: string; noName: string };
+  labels?: {
+    portal: string;
+    editProfile: string;
+    signOut: string;
+    noName: string;
+    home?: string;
+    pricing?: string;
+  };
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
-  const t = labels ?? {
-    portal: "Portal",
-    editProfile: "Edit Profil",
-    signOut: "Sign Out",
-    noName: "Tanpa nama",
+  const t = {
+    portal: labels?.portal ?? "Portal",
+    editProfile: labels?.editProfile ?? "Edit Profil",
+    signOut: labels?.signOut ?? "Sign Out",
+    noName: labels?.noName ?? "Tanpa nama",
+    home: labels?.home ?? "Home",
+    pricing: labels?.pricing ?? "Harga",
   };
 
   useEffect(() => {
@@ -98,9 +107,28 @@ export default function UserMenu({
           >
             <i className="bi bi-pencil"></i> {t.editProfile}
           </Link>
+
+          {/* Link navigasi tambahan di mobile agar user HP punya akses cepat */}
+          <div className="border-t border-border md:hidden">
+            <Link
+              href="/"
+              onClick={() => setOpen(false)}
+              className="flex items-center gap-2.5 px-4 py-2.5 text-sm font-medium text-slate-600 transition hover:bg-surface-2"
+            >
+              <i className="bi bi-house-door"></i> {t.home}
+            </Link>
+            <Link
+              href="/pricing"
+              onClick={() => setOpen(false)}
+              className="flex items-center gap-2.5 px-4 py-2.5 text-sm font-medium text-slate-600 transition hover:bg-surface-2"
+            >
+              <i className="bi bi-tag"></i> {t.pricing}
+            </Link>
+          </div>
+
           <button
             onClick={signOut}
-            className="flex w-full items-center gap-2.5 px-4 py-2.5 text-sm font-medium text-rose-500 transition hover:bg-rose-500/10"
+            className="flex w-full items-center gap-2.5 border-t border-border px-4 py-2.5 text-sm font-medium text-rose-500 transition hover:bg-rose-500/10"
           >
             <i className="bi bi-power"></i> {t.signOut}
           </button>

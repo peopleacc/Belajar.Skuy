@@ -311,8 +311,8 @@ export default function CourseChapters({
             className="group flex flex-col justify-between rounded-sm bg-primary p-5 text-dark shadow-card transition hover:-translate-y-0.5 hover:shadow-lg"
           >
             <div>
-              <span className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-light/10 text-lg">
-                ✨
+              <span className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-brand-500/10 text-lg text-brand-500">
+                <i className="bi bi-stars"></i>
               </span>
               <h3 className="mt-3 font-bold leading-snug">Ingin Menambah Materi Baru?</h3>
               <p className="mt-1 text-xs leading-relaxed text-light-muted">

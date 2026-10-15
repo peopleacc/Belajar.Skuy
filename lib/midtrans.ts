@@ -85,7 +85,7 @@ export async function createSnapTransaction(
         id: params.planCode,
         price: params.grossAmount,
         quantity: 1,
-        name: `Paket ${params.planName} — belajar.skuy`,
+        name: `Paket ${params.planName} — belajar.skuy`.slice(0, 50),
       },
     ],
     customer_details: {

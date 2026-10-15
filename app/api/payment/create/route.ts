@@ -3,19 +3,21 @@ import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { createSnapTransaction, cancelMidtransTransaction } from "@/lib/midtrans";
 
+// Harga bulanan dasar cadangan jika DB belum dimigrasi
+const BASE_MONTHLY_PRICES: Record<string, number> = {
+  premium: 45000,
+  premium_presentasi: 60000,
+  premium_gabungan: 100000,
+  pro: 160000,
+};
+
 /**
  * POST /api/payment/create
  *
  * Membuat sesi pembayaran Midtrans Snap untuk upgrade paket.
+ * Mendukung multi-durasi: durationMonths = 1 | 6 | 12
  *
- * MEKANISME SINGLE ACTIVE INVOICE & REUSE PENDING SESSION:
- * 1. Jika user memilih paket yang SAMA dengan tagihan pending yang masih aktif:
- *    -> Gunakan kembali (reuse) sesi lama tanpa membuat VA/QRIS baru.
- * 2. Jika user memilih paket yang BERBEDA:
- *    -> Otomatis batalkan (cancel) tagihan lama di Midtrans & Supabase
- *       sehingga nomor VA/QRIS lama langsung mati dan user tidak bisa bayar 2 kali.
- *
- * Body: { planCode: string }
+ * Body: { planCode: string, durationMonths?: number }
  * Response: { token: string, redirectUrl: string, orderId: string, isReused: boolean }
  */
 export async function POST(request: Request) {
@@ -34,9 +36,14 @@ export async function POST(request: Request) {
 
   // ── 2. Validasi body ──────────────────────────────────────────────────────
   let planCode: string;
+  let durationMonths = 1;
   try {
     const body = await request.json();
     planCode = typeof body?.planCode === "string" ? body.planCode.trim() : "";
+    const parsedDuration = Number(body?.durationMonths);
+    if ([1, 6, 12].includes(parsedDuration)) {
+      durationMonths = parsedDuration;
+    }
   } catch {
     return NextResponse.json(
       { error: "Format request tidak valid." },
@@ -51,10 +58,7 @@ export async function POST(request: Request) {
     );
   }
 
-  // ── 3. Ambil profil user untuk validasi email ─────────────────────────────
-  const userEmail = user.email ?? "";
-
-  // ── 4. Cek apakah user SUDAH memiliki paket ini yang sedang aktif ─────────
+  // ── 3. Cek apakah user SUDAH memiliki paket ini yang sedang aktif ─────────
   const { data: existingSub } = await supabaseAdmin
     .from("subscriptions")
     .select("plan_code, status, current_period_end")
@@ -73,36 +77,36 @@ export async function POST(request: Request) {
     }
   }
 
-  // ── 5. Cek pending orders & Auto-Cancel tagihan lama jika ganti paket ──────
+  // ── 4. Cek pending orders & Auto-Cancel tagihan lama jika ganti paket/durasi ──
   //    Aturan: 1 user hanya memiliki 1 tagihan aktif dalam satu waktu.
   const { data: activePendingOrders } = await supabaseAdmin
     .from("orders")
-    .select("id, plan_code, snap_token, snap_redirect_url, expires_at")
+    .select("id, plan_code, duration_months, snap_token, snap_redirect_url, expires_at")
     .eq("user_id", user.id)
     .eq("status", "pending")
     .gt("expires_at", new Date().toISOString())
     .order("created_at", { ascending: false });
 
-  // A. Jika ada tagihan pending untuk PAKET YANG SAMA -> gunakan kembali (reuse)
-  const samePlanPending = activePendingOrders?.find((o) => o.plan_code === planCode);
-  if (samePlanPending?.snap_redirect_url) {
+  // A. Jika ada tagihan pending untuk PAKET & DURASI YANG SAMA -> gunakan kembali (reuse)
+  const sameOrderPending = activePendingOrders?.find(
+    (o) => o.plan_code === planCode && (o.duration_months ?? 1) === durationMonths
+  );
+  if (sameOrderPending?.snap_redirect_url) {
     return NextResponse.json({
-      token: samePlanPending.snap_token,
-      redirectUrl: samePlanPending.snap_redirect_url,
-      orderId: samePlanPending.id,
+      token: sameOrderPending.snap_token,
+      redirectUrl: sameOrderPending.snap_redirect_url,
+      orderId: sameOrderPending.id,
       isReused: true,
     });
   }
 
-  // B. Jika ada tagihan pending untuk PAKET LAIN -> batalkan semuanya di Midtrans & DB
-  const otherPlanPendingOrders =
-    activePendingOrders?.filter((o) => o.plan_code !== planCode) ?? [];
-  if (otherPlanPendingOrders.length > 0) {
+  // B. Jika ada tagihan pending untuk paket/durasi lain -> batalkan semuanya di Midtrans & DB
+  const otherPendingOrders =
+    activePendingOrders?.filter((o) => o.id !== sameOrderPending?.id) ?? [];
+  if (otherPendingOrders.length > 0) {
     await Promise.all(
-      otherPlanPendingOrders.map(async (oldOrder) => {
-        // Matikan nomor pembayaran di Midtrans
+      otherPendingOrders.map(async (oldOrder) => {
         await cancelMidtransTransaction(oldOrder.id);
-        // Ubah status di database menjadi canceled
         await supabaseAdmin
           .from("orders")
           .update({
@@ -114,45 +118,74 @@ export async function POST(request: Request) {
     );
   }
 
-  // ── 6. Ambil harga paket dari database ────────────────────────────────────
-  //    Kita ambil harga IDR karena Midtrans dalam konteks Indonesia
+  // ── 5. Ambil harga paket dari database ────────────────────────────────────
+  let chargedAmount = 0;
+
+  // Coba cari harga spesifik durasi
   const { data: priceRow } = await supabaseAdmin
     .from("plan_prices")
-    .select("amount, plan_code, plans(code)")
+    .select("amount, discount_amount, duration_months")
     .eq("plan_code", planCode)
     .eq("currency", "IDR")
+    .eq("duration_months", durationMonths)
     .maybeSingle();
 
-  if (!priceRow || priceRow.amount === 0) {
+  if (priceRow) {
+    chargedAmount = priceRow.discount_amount ?? priceRow.amount;
+  } else {
+    // Fallback formula perhitungan diskon jika tabel migration belum di-run
+    const base = BASE_MONTHLY_PRICES[planCode] ?? 45000;
+    if (durationMonths === 6) {
+      chargedAmount = Math.round(base * 0.8) * 6; // Diskon 20%
+    } else if (durationMonths === 12) {
+      chargedAmount = Math.round(base * 0.7) * 12; // Diskon 30%
+    } else {
+      chargedAmount = base;
+    }
+  }
+
+  if (chargedAmount <= 0) {
     return NextResponse.json(
       { error: "Paket tidak ditemukan atau tidak memerlukan pembayaran." },
       { status: 404 }
     );
   }
 
-  // ── 7. Ambil info user untuk metadata Midtrans ────────────────────────────
+  // ── 6. Ambil info user untuk metadata Midtrans ────────────────────────────
   const { data: profile } = await supabase
     .from("profiles")
     .select("username, full_name")
     .eq("id", user.id)
     .maybeSingle();
 
-  // ── 8. Buat order ID unik ─────────────────────────────────────────────────
-  //    Format: ORDER-<8char-userid>-<plancode>-<timestamp-ms>
+  // ── 7. Buat order ID unik (Midtrans mewajibkan order_id <= 50 karakter) ──
   const shortUserId = user.id.replace(/-/g, "").slice(0, 8).toUpperCase();
-  const orderId = `ORDER-${shortUserId}-${planCode.toUpperCase()}-${Date.now()}`;
+  const PLAN_ABBR: Record<string, string> = {
+    premium: "PREM",
+    premium_presentasi: "PRES",
+    premium_gabungan: "GABUNG",
+    pro: "PRO",
+  };
+  const planTag = PLAN_ABBR[planCode] ?? planCode.slice(0, 6).toUpperCase();
+  const orderId = `ORD-${shortUserId}-${planTag}-${durationMonths}M-${Date.now()}`;
 
-  // ── 9. Buat transaksi Snap di Midtrans ────────────────────────────────────
-  const appUrl =
-    process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+  // ── 8. Buat transaksi Snap di Midtrans ────────────────────────────────────
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+  const planNames: Record<string, string> = {
+    premium: "Premium",
+    premium_presentasi: "Pres",
+    premium_gabungan: "Gabungan",
+    pro: "Pro",
+  };
+  const planLabel = `${planNames[planCode] ?? planCode} (${durationMonths} Bln)`;
 
   let snapResult;
   try {
     snapResult = await createSnapTransaction({
       orderId,
-      grossAmount: priceRow.amount,
+      grossAmount: chargedAmount,
       currency: "IDR",
-      planName: planCode,
+      planName: planLabel,
       userId: user.id,
       planCode,
       customer: {
@@ -177,14 +210,15 @@ export async function POST(request: Request) {
     );
   }
 
-  // ── 10. Simpan order ke database ──────────────────────────────────────────
+  // ── 9. Simpan order ke database ──────────────────────────────────────────
   const { error: insertErr } = await supabaseAdmin.from("orders").insert({
     id: orderId,
     user_id: user.id,
     plan_code: planCode,
-    amount: priceRow.amount,
+    amount: chargedAmount,
     currency: "IDR",
     status: "pending",
+    duration_months: durationMonths,
     snap_token: snapResult.token,
     snap_redirect_url: snapResult.redirect_url,
     expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
@@ -192,8 +226,6 @@ export async function POST(request: Request) {
 
   if (insertErr) {
     console.error("[payment/create] DB insert error:", insertErr);
-    // Order sudah dibuat di Midtrans tapi DB gagal — tetap beri redirect URL
-    // agar user tidak tersangkut. Order akan direkonsiliasi saat webhook masuk.
   }
 
   return NextResponse.json({

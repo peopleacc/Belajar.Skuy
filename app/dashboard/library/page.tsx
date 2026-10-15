@@ -66,8 +66,8 @@ export default async function LibraryPage() {
 
       {configured && groups.length === 0 ? (
         <div className="mt-8 rounded-sm border-2 border-dashed border-slate-200 bg-white/60 px-6 py-14 text-center">
-          <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-50 text-xl">
-            📖
+          <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-50 text-2xl text-brand-500">
+            <i className="bi bi-book-half"></i>
           </div>
           <p className="font-semibold text-slate-700">Belum ada bab yang digenerate</p>
           <p className="mx-auto mt-1 max-w-sm text-sm text-slate-400">

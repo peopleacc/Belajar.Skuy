@@ -1,22 +1,18 @@
+"use client";
+
+import { useState } from "react";
 import type { Dict } from "@/lib/i18n";
-import { formatPrice, type Plan } from "@/lib/plans";
+import type { Plan } from "@/lib/plans";
+import { formatPrice } from "@/lib/format";
 import PaymentButton from "@/components/PaymentButton";
+import BillingCycleToggle, { type BillingCycle } from "@/components/BillingCycleToggle";
 
 /**
- * Lima kartu paket (Fitur EC), dipakai di landing (/) dan halaman harga (/pricing).
- * Rounding + shadow SAMA PERSIS dengan card dashboard ("rounded-sm ... shadow-card").
- *
- * Fitur CB — ANGKA (harga & batas) datang dari database lewat `plans`, sedangkan
- * TEKS (nama paket, daftar fitur, tombol) tetap dari `i18n.ts` supaya bisa
- * diterjemahkan. Angka dan teks dipadankan lewat urutan `sort_order`.
+ * Lima kartu paket (planning-update-16), dipakai di landing (/) dan halaman harga (/pricing).
+ * Dilengkapi dengan tombol geser billing cycle (1 Bulan, 6 Bulan -20%, 1 Tahun -30%).
  *
  * `currentIndex` = indeks paket yang sedang dipakai user (null kalau belum login).
- * Kartu itu ditandai dan tombolnya dimatikan — mencegah user membeli paket yang
- * sudah dia miliki.
- *
- * Popular = index 3 (Premium Gabungan — "value pick" antara Premium & Pro).
- *
- * Layout: 3 kartu baris atas + 2 kartu baris bawah (di-center).
+ * Popular = index 3 (Premium Gabungan — "value pick" di 5 paket).
  */
 export default function PricingPlans({
   t,
@@ -30,6 +26,9 @@ export default function PricingPlans({
   /** Jika true, tombol paket berbayar akan memicu checkout Midtrans. */
   isLoggedIn?: boolean;
 }) {
+  const [activeCycle, setActiveCycle] = useState<BillingCycle>(1);
+  const cycleLabels = (t.pricing as any)?.billingCycles;
+
   function PlanCard({
     p,
     i,
@@ -37,10 +36,40 @@ export default function PricingPlans({
     p: (typeof t.pricing.plans)[0];
     i: number;
   }) {
-    // Fitur EC: popular = index 3 (Premium Gabungan, "value pick" di 5 paket)
+    // Popular = index 3 (Premium Gabungan)
     const popular = i === 3;
     const isCurrent = i === currentIndex;
     const harga = plans[i];
+
+    // Ambil harga spesifik siklus yang aktif (1, 6, atau 12 bulan)
+    const cycleDetail = harga?.durations?.[activeCycle] ?? {
+      durationMonths: activeCycle,
+      amount: harga?.amount ?? 0,
+      effectiveAmount: harga?.effectiveAmount ?? 0,
+      monthlyEquivalent: harga?.monthlyEquivalent ?? 0,
+      discounted: false,
+      discountLabel: null,
+    };
+
+    const isFree = (harga?.code ?? "free") === "free";
+
+    // Keterangan total tagihan
+    const billingSummary = (() => {
+      if (isFree) return null;
+      if (activeCycle === 1) {
+        return cycleLabels?.billedMonthly ?? "Ditagih bulanan";
+      }
+      if (activeCycle === 6) {
+        return `${cycleLabels?.billedSemiAnnual ?? "Ditagih per 6 bulan"} (${formatPrice(
+          cycleDetail.effectiveAmount,
+          harga.currency
+        )})`;
+      }
+      return `${cycleLabels?.billedAnnual ?? "Ditagih per tahun"} (${formatPrice(
+        cycleDetail.effectiveAmount,
+        harga.currency
+      )})`;
+    })();
 
     return (
       <div
@@ -72,31 +101,51 @@ export default function PricingPlans({
 
           <div className="mt-5 flex items-baseline gap-2">
             <span className="text-4xl font-extrabold tracking-tight">
-              {harga ? formatPrice(harga.effectiveAmount, harga.currency) : p.price}
+              {isFree
+                ? p.price
+                : formatPrice(cycleDetail.monthlyEquivalent, harga.currency)}
             </span>
-            {/* Harga normal dicoret — tanpa ini, diskon tak terasa sebagai diskon */}
-            {harga?.discounted && (
+
+            {/* Harga normal dicoret saat diskon 6 bulan / 1 tahun */}
+            {!isFree && cycleDetail.discounted && (
               <span
                 className={`text-base line-through ${
                   popular ? "opacity-60" : "text-slate-400"
                 }`}
               >
-                {formatPrice(harga.amount, harga.currency)}
+                {formatPrice(
+                  Math.round(cycleDetail.amount / activeCycle),
+                  harga.currency
+                )}
               </span>
             )}
+
             <span className={popular ? "opacity-70" : "text-slate-500"}>
               {t.pricing.period}
             </span>
           </div>
 
-          {harga?.discounted && harga.discountLabel && (
-            <span
-              className={`mt-3 inline-block rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-widest ${
-                popular ? "bg-white/20" : "bg-brand-500/10 text-brand-500"
-              }`}
-            >
-              {harga.discountLabel}
-            </span>
+          {/* Keterangan total penagihan dan badge diskon */}
+          {!isFree && (
+            <div className="mt-2 space-y-1">
+              <p
+                className={`text-xs font-medium ${
+                  popular ? "text-white/80" : "text-slate-500"
+                }`}
+              >
+                {billingSummary}
+              </p>
+
+              {cycleDetail.discounted && cycleDetail.discountLabel && (
+                <span
+                  className={`inline-block rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-widest ${
+                    popular ? "bg-white/20 text-white" : "bg-emerald-50 text-emerald-600 border border-emerald-200"
+                  }`}
+                >
+                  {cycleDetail.discountLabel}
+                </span>
+              )}
+            </div>
           )}
         </div>
 
@@ -127,6 +176,7 @@ export default function PricingPlans({
           isPopular={popular}
           ctaText={p.cta}
           currentCtaText={t.pricing.currentCta}
+          durationMonths={activeCycle}
         />
       </div>
     );
@@ -136,7 +186,14 @@ export default function PricingPlans({
   const bottomPlans = t.pricing.plans.slice(3);
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
+      {/* Tombol Geser Durasi Penagihan (1 Bulan, 6 Bulan, 1 Tahun) */}
+      <BillingCycleToggle
+        activeCycle={activeCycle}
+        onChange={setActiveCycle}
+        labels={cycleLabels}
+      />
+
       {/* Baris atas: 3 kartu */}
       <div className="grid items-stretch gap-4 grid-cols-1 sm:grid-cols-3">
         {topPlans.map((p, i) => (

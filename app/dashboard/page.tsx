@@ -189,9 +189,9 @@ export default async function DashboardPage() {
 
   const stats = [
     { label: t.stats.chapters, value: String(chaptersStudied), icon: <i className="bi bi-clock"></i>, accent: "text-brand-500" },
-    { label: t.stats.courses, value: String(coursesCount), icon: <i className="bi bi-book"></i>, accent: "text-emerald-600" },
-    { label: t.stats.avgScore, value: hasAttempts ? avgScore.toFixed(1) : "—", icon: <i className="bi bi-star"></i>, accent: "text-amber-500" },
-    { label: t.stats.streak, value: `${streak} ${t.stats.days}`, icon: <i className="bi bi-fire"></i>, accent: "text-rose-500" },
+    { label: t.stats.courses, value: String(coursesCount), icon: <i className="bi bi-book"></i>, accent: "text-brand-500" },
+    { label: t.stats.avgScore, value: hasAttempts ? avgScore.toFixed(1) : "—", icon: <i className="bi bi-star"></i>, accent: "text-brand-500" },
+    { label: t.stats.streak, value: `${streak} ${t.stats.days}`, icon: <i className="bi bi-fire"></i>, accent: "text-brand-500" },
   ];
 
   const lowest = grades.length > 0 ? grades[grades.length - 1] : null;
@@ -344,7 +344,9 @@ export default async function DashboardPage() {
         </div>
         {courses.length === 0 ? (
           <div className="rounded-sm border-2 border-dashed border-slate-200 bg-white/60 px-6 py-12 text-center">
-            <p className="text-2xl">📚</p>
+            <div className="mx-auto mb-2 flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-50 text-2xl text-brand-500">
+              <i className="bi bi-journal-bookmark-fill"></i>
+            </div>
             <p className="mt-2 font-semibold text-slate-700">{t.myCourses.emptyTitle}</p>
             <p className="mx-auto mt-1 max-w-sm text-sm text-slate-400">
               {t.myCourses.emptyBefore}{" "}

@@ -56,9 +56,18 @@ export default function RegisterPage() {
   return (
     <main className="flex min-h-screen items-center justify-center bg-ink-900 p-6 [background-image:radial-gradient(circle,#2a2547_1px,transparent_1px)] [background-size:24px_24px]">
       <div className="w-full max-w-md rounded-sm bg-white p-8 shadow-2xl md:p-10">
+        {/* Backlink ke Landing Page */}
+        <Link
+          href="/"
+          className="mb-6 inline-flex items-center gap-2 text-xs font-medium text-slate-500 transition hover:text-brand-500"
+        >
+          <i className="bi bi-arrow-left text-sm"></i>
+          Kembali ke Beranda
+        </Link>
+
         <div className="mb-6 flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-500 text-lg font-bold text-white">
-            ✦
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-500 text-lg font-bold text-white shadow-md shadow-brand-500/20">
+            <i className="bi bi-book text-xl"></i>
           </div>
           <div>
             <h1 className="text-xl font-bold">

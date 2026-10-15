@@ -45,9 +45,9 @@ export async function middleware(request: NextRequest) {
   // lingkaran yang tak pernah sampai. Dia tetap masuk matcher supaya cookie sesi ikut
   // disegarkan, sehingga halamannya bisa mengenali paket akun user.
   //
-  // Fitur BG — tujuannya /portal, bukan /dashboard: sekarang ada DUA dashboard
-  // (course & simulasi), jadi user memilih dulu, tidak diasumsikan.
-  if (user && (path === "/login" || path === "/register" || path === "/")) {
+  // User yang sudah login dilarang membuka /login atau /register (diarahkan ke /portal).
+  // Halaman landing ("/") dan harga ("/pricing") bebas diakses karena sudah session-aware.
+  if (user && (path === "/login" || path === "/register")) {
     return NextResponse.redirect(new URL("/portal", request.url));
   }
 

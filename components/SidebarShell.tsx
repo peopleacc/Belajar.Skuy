@@ -1,18 +1,20 @@
 "use client";
 
 import { createContext, useContext, useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import Link from "next/link";
 import { createClient, supabaseConfigured } from "@/lib/supabase/client";
 
 interface SidebarContextType {
   isCollapsed: boolean;
   toggle: () => void;
+  closeMobile: () => void;
 }
 
 const SidebarContext = createContext<SidebarContextType>({
   isCollapsed: false,
   toggle: () => {},
+  closeMobile: () => {},
 });
 
 export function useSidebar() {
@@ -45,22 +47,54 @@ export default function SidebarShell({
   children: React.ReactNode;
 }) {
   const router = useRouter();
+  const pathname = usePathname();
   const berbayar = planCode !== "free";
   const [isCollapsed, setIsCollapsed] = useState(false);
 
   useEffect(() => {
-    const saved = localStorage.getItem("sidebar_collapsed");
-    if (saved !== null) {
-      setIsCollapsed(saved === "true");
+    // Mode HP (< 768px): default tertutup saat awal muat agar konten bersih
+    if (window.innerWidth < 768) {
+      setIsCollapsed(true);
+    } else {
+      const saved = localStorage.getItem("sidebar_collapsed");
+      if (saved !== null) {
+        setIsCollapsed(saved === "true");
+      }
     }
   }, []);
+
+  // Otomatis tutup drawer di mobile saat user berpindah halaman
+  useEffect(() => {
+    if (window.innerWidth < 768) {
+      setIsCollapsed(true);
+    }
+  }, [pathname]);
+
+  // Dukungan tombol Escape untuk menutup drawer di mobile
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape" && !isCollapsed && window.innerWidth < 768) {
+        setIsCollapsed(true);
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [isCollapsed]);
 
   function toggle() {
     setIsCollapsed((prev) => {
       const next = !prev;
-      localStorage.setItem("sidebar_collapsed", String(next));
+      if (window.innerWidth >= 768) {
+        localStorage.setItem("sidebar_collapsed", String(next));
+      }
       return next;
     });
+  }
+
+  function closeMobile() {
+    if (window.innerWidth < 768) {
+      setIsCollapsed(true);
+    }
   }
 
   async function signOut() {
@@ -73,7 +107,16 @@ export default function SidebarShell({
   }
 
   return (
-    <SidebarContext.Provider value={{ isCollapsed, toggle }}>
+    <SidebarContext.Provider value={{ isCollapsed, toggle, closeMobile }}>
+      {/* Backdrop overlay di layar HP ketika sidebar terbuka (menutupi konten di belakang) */}
+      {!isCollapsed && (
+        <div
+          onClick={closeMobile}
+          className="fixed inset-0 z-40 bg-ink-900/50 backdrop-blur-xs transition-opacity duration-300 md:hidden"
+          aria-hidden="true"
+        />
+      )}
+
       {/* Tombol Tampilkan Sidebar ketika sidebar sedang disembunyikan */}
       {isCollapsed && (
         <button
@@ -85,11 +128,15 @@ export default function SidebarShell({
         </button>
       )}
 
+      {/* 
+        Mode HP (< md): Drawer overlay fixed di atas konten (z-50), tidak mengubah ukuran konten 
+        Mode Desktop (>= md): Alur flex normal (in-flow), collapsible w-60 / w-0
+      */}
       <aside
-        className={`relative flex h-screen shrink-0 flex-col bg-secondary-fixed border-r border-sidebar-border transition-all duration-300 ${
+        className={`fixed inset-y-0 left-0 z-50 flex h-screen flex-col border-sidebar-border bg-secondary-fixed transition-all duration-300 ease-in-out md:relative md:inset-auto md:z-auto md:shadow-none md:shrink-0 ${
           isCollapsed
-            ? "w-0 p-0 overflow-hidden opacity-0 border-r-0 pointer-events-none"
-            : "w-60 px-4 py-6 opacity-100"
+            ? "-translate-x-full opacity-0 pointer-events-none md:w-0 md:p-0 md:overflow-hidden md:opacity-0 md:border-r-0 md:translate-x-0"
+            : "w-72 max-w-[85vw] px-4 py-6 opacity-100 border-r shadow-2xl translate-x-0 md:w-60 md:px-4 md:py-6"
         }`}
       >
         {/* Tombol Sembunyikan Sidebar */}
@@ -101,18 +148,28 @@ export default function SidebarShell({
           <i className="bi bi-chevron-left text-xs"></i>
         </button>
 
-        {/* Header Logo & Portal */}
+        {/* Header Logo & Backlink ke Landing Page */}
         <div className="mb-6 mt-2 flex flex-col items-center justify-center text-center gap-2">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-accent-fixed text-2xl font-bold text-secondary-fixed transition-colors duration-200 shadow-sm">
-            <i className="bi bi-book text-xl"></i>
-          </div>
-          <div>
-            <p className="text-sm font-bold leading-tight text-sidebar-fg">
-              belajar<span className="text-sidebar-dot">.skuy</span>
-            </p>
-          </div>
+          <Link
+            href="/"
+            onClick={closeMobile}
+            title="Kembali ke Landing Page"
+            className="group flex flex-col items-center justify-center transition hover:opacity-90"
+          >
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-accent-fixed text-2xl font-bold text-secondary-fixed transition-transform duration-200 shadow-sm group-hover:scale-105">
+              <i className="bi bi-book text-xl"></i>
+            </div>
+            <div className="mt-1.5">
+              <p className="text-sm font-bold leading-tight text-sidebar-fg">
+                belajar<span className="text-sidebar-dot">.skuy</span>
+              </p>
+            </div>
+          </Link>
+
+          {/* Portal Link */}
           <Link
             href="/portal"
+            onClick={closeMobile}
             className="mt-1 flex items-center gap-1 text-[11px] font-medium text-sidebar-muted transition hover:text-sidebar-fg"
           >
             <i className="bi bi-arrow-left-right"></i>
@@ -120,8 +177,18 @@ export default function SidebarShell({
           </Link>
         </div>
 
-        {/* Isi Navigasi */}
-        <nav className="flex-1 space-y-1 overflow-y-auto overflow-x-hidden">{children}</nav>
+        {/* Isi Navigasi: tutup otomatis saat link diklik pada mode mobile */}
+        <nav
+          onClick={(e) => {
+            const target = e.target as HTMLElement;
+            if (target.closest("a")) {
+              closeMobile();
+            }
+          }}
+          className="flex-1 space-y-1 overflow-y-auto overflow-x-hidden"
+        >
+          {children}
+        </nav>
 
         {/* Footer Akun & CTA */}
         <div className="space-y-2 border-t border-sidebar-border pt-3">
@@ -133,6 +200,7 @@ export default function SidebarShell({
           ) : (
             <Link
               href="/pricing"
+              onClick={closeMobile}
               className="flex w-full items-center justify-center gap-2 rounded-md border border-sidebar-dot/40 px-3 py-2 text-xs font-semibold text-sidebar-dot transition hover:bg-sidebar-hover"
             >
               <i className="bi bi-stars"></i>
@@ -142,6 +210,7 @@ export default function SidebarShell({
 
           <Link
             href={ctaHref}
+            onClick={closeMobile}
             className="flex w-full items-center justify-center gap-2 rounded-md bg-accent-fixed px-3 py-2.5 text-sm font-semibold text-secondary-fixed shadow-md transition hover:opacity-90 active:scale-[0.98]"
           >
             {ctaLabel}

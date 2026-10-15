@@ -168,11 +168,11 @@ export default function CustomQuizForm({
     }
   }
 
-  const TABS: { key: SourceTab; label: string }[] = [
-    { key: "text", label: "📋 Teks" },
-    { key: "pdf", label: "📄 PDF" },
-    { key: "materials", label: "📚 Dari Materi Saya" },
-    { key: "own_questions", label: "✍️ Tulis Soal" },
+  const TABS: { key: SourceTab; label: string; icon: string }[] = [
+    { key: "text", label: "Teks", icon: "bi-clipboard2-text" },
+    { key: "pdf", label: "PDF", icon: "bi-file-earmark-pdf-fill" },
+    { key: "materials", label: "Dari Materi Saya", icon: "bi-journal-bookmark-fill" },
+    { key: "own_questions", label: "Tulis Soal", icon: "bi-pencil-square" },
   ];
 
   return (
@@ -192,13 +192,14 @@ export default function CustomQuizForm({
               setTab(t.key);
               setError(null);
             }}
-            className={`rounded-xl border px-3.5 py-2 text-xs font-semibold transition ${
+            className={`inline-flex items-center gap-1.5 rounded-xl border px-3.5 py-2 text-xs font-semibold transition ${
               tab === t.key
                 ? "border-brand-500 bg-brand-50 text-brand-700"
                 : "border-slate-200 text-slate-500 hover:bg-slate-50"
             }`}
           >
-            {t.label}
+            <i className={`bi ${t.icon} text-brand-500`}></i>
+            <span>{t.label}</span>
           </button>
         ))}
       </div>
@@ -216,7 +217,10 @@ export default function CustomQuizForm({
                     : "bg-slate-100 text-slate-600 hover:bg-slate-200"
                 }`}
               >
-                📝 Per Input Soal
+                <span className="inline-flex items-center gap-1.5">
+                  <i className={`bi bi-pencil-square ${inputMode === "fields" ? "text-white" : "text-brand-500"}`}></i>
+                  Per Input Soal
+                </span>
               </button>
               <button
                 type="button"
@@ -227,7 +231,10 @@ export default function CustomQuizForm({
                     : "bg-slate-100 text-slate-600 hover:bg-slate-200"
                 }`}
               >
-                📋 Tempel Sekaligus
+                <span className="inline-flex items-center gap-1.5">
+                  <i className={`bi bi-clipboard2-text ${inputMode === "bulk" ? "text-white" : "text-brand-500"}`}></i>
+                  Tempel Sekaligus
+                </span>
               </button>
             </div>
             <span className="text-xs font-semibold text-brand-600">
@@ -295,8 +302,11 @@ Sebutkan dan jelaskan Hukum I Newton!`}
             />
           )}
 
-          <p className="text-[11px] text-slate-500">
-            💡 AI tidak akan menambah/mengubah soal. AI hanya bertugas membuatkan pilihan jawaban (PG A/B/C/D), kunci jawaban, dan pembahasan lengkap untuk soal-soal di atas!
+          <p className="flex items-start gap-1.5 text-[11px] text-slate-500">
+            <i className="bi bi-lightbulb-fill mt-0.5 shrink-0 text-brand-500"></i>
+            <span>
+              AI tidak akan menambah/mengubah soal. AI hanya bertugas membuatkan pilihan jawaban (PG A/B/C/D), kunci jawaban, dan pembahasan lengkap untuk soal-soal di atas!
+            </span>
           </p>
         </div>
       )}
@@ -314,8 +324,9 @@ Sebutkan dan jelaskan Hukum I Newton!`}
 
       {tab === "pdf" && (
         <div className="mt-4">
-          <label className="inline-block cursor-pointer rounded-xl border border-dashed border-slate-300 px-4 py-2.5 text-xs font-medium text-slate-500 transition hover:border-brand-300 hover:bg-brand-50/50">
-            📄 {fileName ?? "Pilih file PDF (maks 5MB)"}
+          <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-dashed border-slate-300 px-4 py-2.5 text-xs font-medium text-slate-500 transition hover:border-brand-300 hover:bg-brand-50/50">
+            <i className="bi bi-file-earmark-pdf-fill text-sm text-brand-500"></i>
+            <span>{fileName ?? "Pilih file PDF (maks 5MB)"}</span>
             <input
               ref={fileRef}
               type="file"
@@ -444,11 +455,13 @@ Sebutkan dan jelaskan Hukum I Newton!`}
           className="rounded-xl bg-brand-500 px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-brand-500/25 transition hover:bg-brand-600 disabled:opacity-60"
         >
           {loading ? (
-            "⏳ AI menyusun soal..."
+            <span className="inline-flex items-center gap-1.5">
+              <i className="bi bi-hourglass-split animate-pulse"></i> AI menyusun soal...
+            </span>
           ) : (
-            <>
-              <i className="bi bi-pencil-square mr-1"></i> Generate Kuis
-            </>
+            <span className="inline-flex items-center gap-1.5">
+              <i className="bi bi-pencil-square"></i> Generate Kuis
+            </span>
           )}
         </button>
       </div>

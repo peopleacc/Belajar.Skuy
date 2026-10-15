@@ -548,8 +548,9 @@ export function NilaiTab({ quiz, attempts }: { quiz: QuizRow; attempts: AttemptR
                     </p>
                   </div>
                   {essayStored.feedback && (
-                    <div className="mt-2 rounded-lg bg-brand-50 px-3 py-2">
-                      <p className="text-xs text-brand-700">💬 {essayStored.feedback}</p>
+                    <div className="mt-2 flex items-start gap-1.5 rounded-lg bg-brand-50 px-3 py-2">
+                      <i className="bi bi-chat-dots-fill mt-0.5 shrink-0 text-xs text-brand-500"></i>
+                      <p className="text-xs text-brand-700">{essayStored.feedback}</p>
                     </div>
                   )}
                   {(essayStored.missing_points?.length ?? 0) > 0 && (
@@ -557,8 +558,9 @@ export function NilaiTab({ quiz, attempts }: { quiz: QuizRow; attempts: AttemptR
                       Belum disinggung: {essayStored.missing_points!.join(", ")}
                     </p>
                   )}
-                  <div className="mt-2 rounded-lg bg-slate-50 px-3 py-2">
-                    <MathText className="text-xs text-slate-600">{`💡 ${q.explanation}`}</MathText>
+                  <div className="mt-2 flex items-start gap-1.5 rounded-lg bg-slate-50 px-3 py-2">
+                    <i className="bi bi-lightbulb-fill mt-0.5 shrink-0 text-xs text-brand-500"></i>
+                    <MathText className="text-xs text-slate-600">{q.explanation}</MathText>
                   </div>
                 </div>
               );
@@ -605,8 +607,9 @@ export function NilaiTab({ quiz, attempts }: { quiz: QuizRow; attempts: AttemptR
                     </>
                   )}
                 </p>
-                <div className="mt-2 rounded-lg bg-slate-50 px-3 py-2">
-                  <MathText className="text-xs text-slate-600">{`💡 ${q.explanation}`}</MathText>
+                <div className="mt-2 flex items-start gap-1.5 rounded-lg bg-slate-50 px-3 py-2">
+                  <i className="bi bi-lightbulb-fill mt-0.5 shrink-0 text-xs text-brand-500"></i>
+                  <MathText className="text-xs text-slate-600">{q.explanation}</MathText>
                 </div>
               </div>
             );

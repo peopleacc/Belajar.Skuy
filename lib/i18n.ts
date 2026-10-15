@@ -18,6 +18,7 @@ export function normalizeLang(value?: string | null): Lang {
 const dictionaries = {
   id: {
     nav: {
+      home: "Home",
       features: "Fitur",
       how: "Cara Kerja",
       pricing: "Harga",
@@ -311,6 +312,16 @@ const dictionaries = {
         "Mulai gratis, tingkatkan kapan saja untuk membuka fitur AI yang lebih bertenaga.",
       popular: "Paling Populer",
       period: "/bulan",
+      billingCycles: {
+        monthly: "1 Bulan",
+        semiAnnual: "6 Bulan",
+        annual: "1 Tahun",
+        save20: "Hemat 20%",
+        save30: "Hemat 30%",
+        billedMonthly: "Ditagih bulanan",
+        billedSemiAnnual: "Ditagih per 6 bulan",
+        billedAnnual: "Ditagih per tahun",
+      },
       plans: [
         {
           tier: "Pemula",
@@ -323,7 +334,7 @@ const dictionaries = {
         {
           tier: "Course",
           name: "Premium",
-          price: "Rp 80rb",
+          price: "Rp 45rb",
           cta: "Pilih Premium",
           features: [
             "3 modul per hari",
@@ -335,7 +346,7 @@ const dictionaries = {
         {
           tier: "Simulasi",
           name: "Premium Presentasi",
-          price: "Rp 100rb",
+          price: "Rp 60rb",
           cta: "Pilih Presentasi",
           features: [
             "Simulasi presentasi 10×/minggu",
@@ -347,7 +358,7 @@ const dictionaries = {
         {
           tier: "Terlengkap",
           name: "Premium Gabungan",
-          price: "Rp 140rb",
+          price: "Rp 100rb",
           cta: "Pilih Gabungan",
           features: [
             "5 modul per hari",
@@ -360,7 +371,7 @@ const dictionaries = {
         {
           tier: "Tanpa Batas",
           name: "Pro",
-          price: "Rp 250rb",
+          price: "Rp 160rb",
           cta: "Pilih Paket Pro",
           features: [
             "15 modul per hari",
@@ -448,6 +459,7 @@ const dictionaries = {
 
   en: {
     nav: {
+      home: "Home",
       features: "Features",
       how: "How It Works",
       pricing: "Pricing",
@@ -738,6 +750,16 @@ const dictionaries = {
         "Start free and upgrade whenever you want to unlock more powerful AI features.",
       popular: "Most Popular",
       period: "/month",
+      billingCycles: {
+        monthly: "1 Month",
+        semiAnnual: "6 Months",
+        annual: "1 Year",
+        save20: "Save 20%",
+        save30: "Save 30%",
+        billedMonthly: "Billed monthly",
+        billedSemiAnnual: "Billed every 6 months",
+        billedAnnual: "Billed annually",
+      },
       plans: [
         {
           tier: "Entry",
@@ -750,7 +772,7 @@ const dictionaries = {
         {
           tier: "Course",
           name: "Premium",
-          price: "$5",
+          price: "$3",
           cta: "Choose Premium",
           features: [
             "3 modules per day",
@@ -762,7 +784,7 @@ const dictionaries = {
         {
           tier: "Simulation",
           name: "Premium Presentation",
-          price: "$7",
+          price: "$4",
           cta: "Choose Presentation",
           features: [
             "10× presentations/week",
@@ -774,7 +796,7 @@ const dictionaries = {
         {
           tier: "All-in-one",
           name: "Premium Combined",
-          price: "$9",
+          price: "$7",
           cta: "Choose Combined",
           features: [
             "5 modules per day",
@@ -787,7 +809,7 @@ const dictionaries = {
         {
           tier: "Unlimited",
           name: "Pro",
-          price: "$15",
+          price: "$10",
           cta: "Choose Pro",
           features: [
             "15 modules per day",
