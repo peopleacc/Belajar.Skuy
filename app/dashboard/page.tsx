@@ -221,6 +221,47 @@ export default async function DashboardPage() {
         </div>
       </div>
 
+      {/* ── Quick Action Cards (Generate Course & Custom Quiz) ── */}
+      <section className="mb-8 grid gap-6 md:grid-cols-2">
+        <Link
+          href="/dashboard/generate"
+          className="rounded-sm bg-white p-8 shadow-card group relative flex flex-col transition hover:-translate-y-0.5 hover:shadow-lg"
+        >
+          <span className="mb-6 flex h-14 w-14 items-center justify-center rounded-2xl bg-brand-500/10 text-2xl text-brand-500">
+            <i className={`bi ${t.quickActions.generateCourse.icon}`}></i>
+          </span>
+
+          <h2 className="mb-3 text-xl font-bold">{t.quickActions.generateCourse.title}</h2>
+          <p className="mb-8 flex-1 leading-relaxed text-sm text-slate-500">
+            {t.quickActions.generateCourse.desc}
+          </p>
+
+          <span className="flex items-center gap-2 text-sm font-semibold text-brand-500 transition-all group-hover:gap-3">
+            {t.quickActions.generateCourse.cta}
+            <i className="bi bi-arrow-right"></i>
+          </span>
+        </Link>
+
+        <Link
+          href="/dashboard/quizzes"
+          className="rounded-sm bg-white p-8 shadow-card group relative flex flex-col transition hover:-translate-y-0.5 hover:shadow-lg"
+        >
+          <span className="mb-6 flex h-14 w-14 items-center justify-center rounded-2xl bg-brand-500/10 text-2xl text-brand-500">
+            <i className={`bi ${t.quickActions.customQuiz.icon}`}></i>
+          </span>
+
+          <h2 className="mb-3 text-xl font-bold">{t.quickActions.customQuiz.title}</h2>
+          <p className="mb-8 flex-1 leading-relaxed text-sm text-slate-500">
+            {t.quickActions.customQuiz.desc}
+          </p>
+
+          <span className="flex items-center gap-2 text-sm font-semibold text-brand-500 transition-all group-hover:gap-3">
+            {t.quickActions.customQuiz.cta}
+            <i className="bi bi-arrow-right"></i>
+          </span>
+        </Link>
+      </section>
+
       {/* Stat cards */}
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         {stats.map((s) => (

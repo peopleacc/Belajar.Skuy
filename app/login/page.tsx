@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { createClient, supabaseConfigured } from "@/lib/supabase/client";
 import { recordLogin } from "@/lib/loginEvents";
+import { getAppUrl } from "@/lib/url";
 
 function GoogleIcon() {
   return (
@@ -77,7 +78,8 @@ function LoginForm() {
     if (!supabaseConfigured) return;
     const supabase = createClient();
     // Arahkan callback ke /auth/callback dengan next=/portal eksplisit
-    const redirectUrl = `${window.location.origin}/auth/callback?next=${encodeURIComponent(nextTarget)}`;
+    const origin = getAppUrl();
+    const redirectUrl = `${origin}/auth/callback?next=${encodeURIComponent(nextTarget)}`;
     await supabase.auth.signInWithOAuth({
       provider: "google",
       options: { redirectTo: redirectUrl },

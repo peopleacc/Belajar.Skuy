@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { createSnapTransaction, cancelMidtransTransaction } from "@/lib/midtrans";
+import { getAppUrl } from "@/lib/url";
 
 // Harga bulanan dasar cadangan jika DB belum dimigrasi
 const BASE_MONTHLY_PRICES: Record<string, number> = {
@@ -170,7 +171,7 @@ export async function POST(request: Request) {
   const orderId = `ORD-${shortUserId}-${planTag}-${durationMonths}M-${Date.now()}`;
 
   // ── 8. Buat transaksi Snap di Midtrans ────────────────────────────────────
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || getAppUrl();
   const planNames: Record<string, string> = {
     premium: "Premium",
     premium_presentasi: "Pres",

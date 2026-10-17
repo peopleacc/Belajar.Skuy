@@ -81,30 +81,86 @@ export default async function SimulationHome({
 
   return (
     <main className="mx-auto max-w-6xl p-8">
-      <div className="mb-8 flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight md:text-3xl">
-            {t.portal.modes.simulation.title}
-          </h1>
-          <p className="mt-1 text-sm text-slate-500">
-            {td.subtitle}
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Link
-            href="/simulation/new"
-            className="rounded-xl bg-brand-500 px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-brand-500/25 transition hover:bg-brand-600"
-          >
-            {td.newPresentation}
-          </Link>
-          <Link
-            href="/simulation/interview"
-            className="rounded-xl border border-brand-500 px-5 py-3 text-sm font-semibold text-brand-500 transition hover:bg-brand-500 hover:text-white"
-          >
-            {td.newInterview}
-          </Link>
-        </div>
+      <div className="mb-8">
+        <h1 className="text-2xl font-bold tracking-tight md:text-3xl">
+          {t.portal.modes.simulation.title}
+        </h1>
+        <p className="mt-1 text-sm text-slate-500">
+          {td.subtitle}
+        </p>
       </div>
+
+      {/* ── 3 Quick Action Cards (Presentasi, Wawancara, Interview) ── */}
+      <section className="mb-8 grid gap-6 md:grid-cols-3">
+        <Link
+          href="/simulation/new"
+          className={`${CARD} group relative flex flex-col p-8 transition hover:-translate-y-0.5 hover:shadow-lg`}
+        >
+          <span className="absolute right-6 top-6 rounded-full bg-brand-500/10 px-3 py-1 text-[10px] font-bold uppercase tracking-widest text-brand-500">
+            {td.quickActions.presentation.badge}
+          </span>
+
+          <span className="mb-6 flex h-14 w-14 items-center justify-center rounded-2xl bg-brand-500/10 text-2xl text-brand-500">
+            <i className={`bi ${td.quickActions.presentation.icon}`}></i>
+          </span>
+
+          <h2 className="mb-3 text-lg font-bold sm:text-xl">{td.quickActions.presentation.title}</h2>
+          <p className="mb-8 flex-1 leading-relaxed text-sm text-slate-500">
+            {td.quickActions.presentation.desc}
+          </p>
+
+          <span className="flex items-center gap-2 text-sm font-semibold text-brand-500 transition-all group-hover:gap-3">
+            {td.quickActions.presentation.cta}
+            <i className="bi bi-arrow-right"></i>
+          </span>
+        </Link>
+
+        <Link
+          href="/simulation/wawancara"
+          className={`${CARD} group relative flex flex-col p-8 transition hover:-translate-y-0.5 hover:shadow-lg`}
+        >
+          <span className="absolute right-6 top-6 rounded-full bg-brand-500/10 px-3 py-1 text-[10px] font-bold uppercase tracking-widest text-brand-500">
+            {td.quickActions.wawancara.badge}
+          </span>
+
+          <span className="mb-6 flex h-14 w-14 items-center justify-center rounded-2xl bg-brand-500/10 text-2xl text-brand-500">
+            <i className={`bi ${td.quickActions.wawancara.icon}`}></i>
+          </span>
+
+          <h2 className="mb-3 text-lg font-bold sm:text-xl">{td.quickActions.wawancara.title}</h2>
+          <p className="mb-8 flex-1 leading-relaxed text-sm text-slate-500">
+            {td.quickActions.wawancara.desc}
+          </p>
+
+          <span className="flex items-center gap-2 text-sm font-semibold text-brand-500 transition-all group-hover:gap-3">
+            {td.quickActions.wawancara.cta}
+            <i className="bi bi-arrow-right"></i>
+          </span>
+        </Link>
+
+        <Link
+          href="/simulation/interview"
+          className={`${CARD} group relative flex flex-col p-8 transition hover:-translate-y-0.5 hover:shadow-lg`}
+        >
+          <span className="absolute right-6 top-6 rounded-full bg-brand-500/10 px-3 py-1 text-[10px] font-bold uppercase tracking-widest text-brand-500">
+            {td.quickActions.interview.badge}
+          </span>
+
+          <span className="mb-6 flex h-14 w-14 items-center justify-center rounded-2xl bg-brand-500/10 text-2xl text-brand-500">
+            <i className={`bi ${td.quickActions.interview.icon}`}></i>
+          </span>
+
+          <h2 className="mb-3 text-lg font-bold sm:text-xl">{td.quickActions.interview.title}</h2>
+          <p className="mb-8 flex-1 leading-relaxed text-sm text-slate-500">
+            {td.quickActions.interview.desc}
+          </p>
+
+          <span className="flex items-center gap-2 text-sm font-semibold text-brand-500 transition-all group-hover:gap-3">
+            {td.quickActions.interview.cta}
+            <i className="bi bi-arrow-right"></i>
+          </span>
+        </Link>
+      </section>
 
       {!hasAnySession ? (
         <div className={`${CARD} p-10 text-center`}>

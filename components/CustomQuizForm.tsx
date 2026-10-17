@@ -168,11 +168,36 @@ export default function CustomQuizForm({
     }
   }
 
-  const TABS: { key: SourceTab; label: string; icon: string }[] = [
-    { key: "text", label: "Teks", icon: "bi-clipboard2-text" },
-    { key: "pdf", label: "PDF", icon: "bi-file-earmark-pdf-fill" },
-    { key: "materials", label: "Dari Materi Saya", icon: "bi-journal-bookmark-fill" },
-    { key: "own_questions", label: "Tulis Soal", icon: "bi-pencil-square" },
+  const TABS: {
+    key: SourceTab;
+    label: string;
+    desc: string;
+    icon: string;
+  }[] = [
+    {
+      key: "text",
+      label: "Tempel Teks",
+      desc: "Buat kuis instan dari catatan, artikel, atau ringkasan teks bebas.",
+      icon: "bi-clipboard2-text",
+    },
+    {
+      key: "pdf",
+      label: "Dokumen PDF",
+      desc: "Ekstrak materi dari modul kuliah, e-book, atau slide presentasi PDF.",
+      icon: "bi-file-earmark-pdf-fill",
+    },
+    {
+      key: "materials",
+      label: "Materi Kursus Saya",
+      desc: "Pilih bab dari kursus yang sudah kamu buat sebelumnya di akunmu.",
+      icon: "bi-journal-bookmark-fill",
+    },
+    {
+      key: "own_questions",
+      label: "Tulis Soal Sendiri",
+      desc: "Tulis daftar pertanyaanmu, AI akan melengkapi opsi dan kunci jawabannya.",
+      icon: "bi-pencil-square",
+    },
   ];
 
   return (
@@ -183,25 +208,41 @@ export default function CustomQuizForm({
         AI menyusun kuis dan jawabannya dari sumber pilihanmu.
       </p>
 
-      <div className="mt-4 flex flex-wrap gap-2">
-        {TABS.map((t) => (
-          <button
-            key={t.key}
-            type="button"
-            onClick={() => {
-              setTab(t.key);
-              setError(null);
-            }}
-            className={`inline-flex items-center gap-1.5 rounded-xl border px-3.5 py-2 text-xs font-semibold transition ${
-              tab === t.key
-                ? "border-brand-500 bg-brand-50 text-brand-700"
-                : "border-slate-200 text-slate-500 hover:bg-slate-50"
-            }`}
-          >
-            <i className={`bi ${t.icon} text-brand-500`}></i>
-            <span>{t.label}</span>
-          </button>
-        ))}
+      <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        {TABS.map((t) => {
+          const active = tab === t.key;
+          return (
+            <button
+              key={t.key}
+              type="button"
+              onClick={() => {
+                setTab(t.key);
+                setError(null);
+              }}
+              className={`group relative flex flex-col items-start rounded-xl border p-3.5 text-left transition hover:-translate-y-0.5 hover:shadow-sm ${
+                active
+                  ? "border-brand-500 bg-brand-500/10 text-brand-700 shadow-sm ring-1 ring-brand-500/20"
+                  : "border-slate-200 bg-white hover:border-slate-300"
+              }`}
+            >
+              <span
+                className={`mb-2.5 flex h-9 w-9 items-center justify-center rounded-lg text-lg transition ${
+                  active
+                    ? "bg-brand-500 text-white"
+                    : "bg-brand-500/10 text-brand-600 group-hover:bg-brand-500/20"
+                }`}
+              >
+                <i className={`bi ${t.icon}`}></i>
+              </span>
+              <p className={`text-xs font-bold ${active ? "text-brand-700" : "text-slate-800"}`}>
+                {t.label}
+              </p>
+              <p className="mt-1 text-[11px] leading-relaxed text-slate-500">
+                {t.desc}
+              </p>
+            </button>
+          );
+        })}
       </div>
 
       {tab === "own_questions" && (

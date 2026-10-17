@@ -148,9 +148,11 @@ export function saveOptions(options: GenerateOptions) {
 
 const ESTIMATE_SECONDS = { mcq: 30, essay: 120, voice: 150 };
 
-/** Baris satu tipe soal: checkbox + angka (read-only kalau jumlahnya ditentukan otomatis). */
+/** Baris satu tipe soal: kartu interaktif dengan ikon, judul, deskripsi, toggle, dan kontrol angka. */
 function TypeRow({
   label,
+  icon,
+  description,
   checked,
   count,
   max,
@@ -161,6 +163,8 @@ function TypeRow({
   locked = false,
 }: {
   label: string;
+  icon?: string;
+  description?: string;
   checked: boolean;
   count: number;
   max?: number; // undefined = angka read-only (dihitung otomatis sebagai sisa)
@@ -173,58 +177,94 @@ function TypeRow({
   locked?: boolean;
 }) {
   const editable = typeof max === "number" && checked;
+  const cannotToggle = disabled || Boolean(lockedReason);
+
   return (
-    <label
+    <div
       title={lockedReason}
-      className={`flex flex-1 cursor-pointer flex-col gap-2 rounded-xl border p-3 text-xs transition ${
+      className={`group relative flex flex-1 flex-col justify-between rounded-xl border p-3.5 text-left transition hover:-translate-y-0.5 hover:shadow-sm ${
         locked
           ? "border-dashed border-slate-200 bg-slate-50/70"
           : checked
-            ? "border-brand-200 bg-brand-50/40"
-            : "border-slate-200 hover:border-slate-300"
+            ? "border-brand-500 bg-brand-500/10 shadow-sm ring-1 ring-brand-500/20"
+            : "border-slate-200 bg-white hover:border-slate-300"
       }`}
     >
-      <span className="flex items-start gap-2">
-        <input
-          type="checkbox"
-          checked={checked}
-          disabled={disabled || Boolean(lockedReason)}
-          onChange={(e) => onToggle(e.target.checked)}
-          className="mt-px shrink-0 accent-brand-500"
-        />
-        <span className={`leading-snug font-medium ${locked ? "text-slate-400" : "text-slate-700"}`}>
-          {label}
-        </span>
-      </span>
-      <span className="flex items-center justify-between">
-        {locked && (
-          <span className="flex items-center gap-1 rounded-full bg-slate-200/70 px-2 py-0.5 text-[10px] font-semibold text-slate-500">
-            <i className="bi bi-lock-fill"></i>
-            Berbayar
-          </span>
-        )}
-        {!locked && <span />}
+      <label className={`block ${cannotToggle ? "cursor-default" : "cursor-pointer"}`}>
+        <div className="flex items-start justify-between gap-2">
+          {icon ? (
+            <span
+              className={`flex h-9 w-9 items-center justify-center rounded-lg text-lg transition ${
+                locked
+                  ? "bg-slate-200/70 text-slate-400"
+                  : checked
+                    ? "bg-brand-500 text-white"
+                    : "bg-brand-500/10 text-brand-600 group-hover:bg-brand-500/20"
+              }`}
+            >
+              <i className={`bi ${icon}`}></i>
+            </span>
+          ) : (
+            <span />
+          )}
+
+          <div className="flex items-center gap-1.5">
+            {locked && (
+              <span className="flex items-center gap-1 rounded-full bg-slate-200/80 px-2 py-0.5 text-[10px] font-semibold text-slate-500">
+                <i className="bi bi-lock-fill"></i>
+                Berbayar
+              </span>
+            )}
+            <input
+              type="checkbox"
+              checked={checked}
+              disabled={cannotToggle}
+              onChange={(e) => onToggle(e.target.checked)}
+              className="h-4 w-4 rounded accent-brand-500 cursor-pointer disabled:cursor-not-allowed"
+            />
+          </div>
+        </div>
+
+        <div className="my-2.5">
+          <p className={`text-xs font-bold ${locked ? "text-slate-400" : checked ? "text-brand-700" : "text-slate-800"}`}>
+            {label}
+          </p>
+          {description && (
+            <p className="mt-1 text-[11px] leading-relaxed text-slate-500">
+              {description}
+            </p>
+          )}
+        </div>
+      </label>
+
+      <div className="mt-2 flex items-center justify-between border-t border-slate-200/60 pt-2.5">
+        <span className="text-[10px] font-medium text-slate-400">Porsi Soal</span>
         {editable ? (
-          <input
-            type="number"
-            min={1}
-            max={max}
-            value={count}
-            disabled={disabled}
-            onChange={(e) => onCount?.(Number(e.target.value))}
-            className="w-10 rounded-lg border border-slate-200 px-1.5 py-1 text-center outline-none transition focus:border-brand-400 disabled:opacity-50"
-          />
+          <div className="flex items-center gap-1.5">
+            <input
+              type="number"
+              min={1}
+              max={max}
+              value={count}
+              disabled={disabled}
+              onChange={(e) => onCount?.(Number(e.target.value))}
+              className="h-7 w-12 rounded-lg border border-slate-200 bg-white px-1.5 text-center text-xs font-bold text-slate-700 outline-none transition focus:border-brand-500 focus:ring-1 focus:ring-brand-500 disabled:opacity-50"
+            />
+            <span className="text-[11px] font-medium text-slate-500">soal</span>
+          </div>
         ) : (
           <span
-            className={`w-10 rounded-lg px-1.5 py-1 text-center font-semibold ${
-              checked ? "bg-white text-slate-600" : "text-slate-300"
+            className={`rounded-lg px-2 py-0.5 text-xs font-bold transition ${
+              checked
+                ? "bg-white text-brand-700 shadow-2xs border border-brand-200/60"
+                : "text-slate-300"
             }`}
           >
-            {count}
+            {count} soal
           </span>
         )}
-      </span>
-    </label>
+      </div>
+    </div>
   );
 }
 
@@ -283,9 +323,11 @@ export function QuizTypeFields({
   return (
     <div>
       <p className="mb-1.5 text-xs font-semibold text-slate-600">Tipe soal</p>
-      <div className="flex w-full flex-row gap-2">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <TypeRow
           label="Pilihan Ganda"
+          icon="bi-ui-checks"
+          description="Pertanyaan 4 opsi jawaban dengan kunci dan pembahasan otomatis."
           checked={enabled.mcq}
           count={value.mcq}
           disabled={disabled}
@@ -293,7 +335,9 @@ export function QuizTypeFields({
           lockedReason={isLastActive("mcq") ? lockedReason : undefined}
         />
         <TypeRow
-          label="Esai (ketik)"
+          label="Esai (Ketik)"
+          icon="bi-keyboard-fill"
+          description="Uraian tertulis untuk menguji pemahaman konsep dengan rubrik penilaian AI."
           checked={enabled.essay}
           count={value.essay}
           max={activeCount > 1 ? specialMax : undefined}
@@ -303,7 +347,9 @@ export function QuizTypeFields({
           lockedReason={isLastActive("essay") ? lockedReason : undefined}
         />
         <TypeRow
-          label="Esai dengan suara 🎙️"
+          label="Esai dengan Suara"
+          icon="bi-mic-fill"
+          description="Menjawab langsung dengan berbicara. Dinilai artikulasi dan kelengkapan konsep."
           checked={!voiceLocked && enabled.voice}
           count={voiceLocked ? 0 : value.voice}
           max={activeCount > 1 ? specialMax : undefined}

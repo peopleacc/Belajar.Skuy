@@ -111,6 +111,66 @@ function EyeTimeline({ segments }: { segments: SegmentRow[] }) {
   );
 }
 
+function SlidePresentationCard({
+  slideIndex,
+  totalSlides,
+  rawText,
+}: {
+  slideIndex: number;
+  totalSlides: number;
+  rawText: string;
+}) {
+  const lines = rawText
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter(Boolean);
+
+  const title = lines[0] ?? `Slide ${slideIndex + 1}`;
+  const points = lines.slice(1);
+
+  return (
+    <div className="mb-4 overflow-hidden rounded-xl border border-slate-700/80 bg-gradient-to-br from-slate-900 via-slate-800 to-ink-900 p-5 text-white shadow-lg">
+      <div className="mb-3 flex items-center justify-between border-b border-white/10 pb-2.5 text-[11px] text-slate-400">
+        <div className="flex items-center gap-2">
+          <span className="flex h-5 items-center justify-center rounded bg-brand-500/30 px-2 font-mono font-bold text-brand-300">
+            SLIDE #{slideIndex + 1}
+          </span>
+          <span className="font-medium text-slate-300">Halaman {slideIndex + 1} dari {totalSlides}</span>
+        </div>
+        <span className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-slate-400">
+          <i className="bi bi-file-earmark-slides-fill text-brand-400"></i> Deck Presentasi
+        </span>
+      </div>
+
+      <div className="space-y-3 py-1">
+        <h4 className="text-base font-bold tracking-tight text-white md:text-lg">
+          {title}
+        </h4>
+
+        {points.length > 0 ? (
+          <ul className="space-y-1.5 text-xs text-slate-300 md:text-sm">
+            {points.map((pt, idx) => (
+              <li key={idx} className="flex items-start gap-2">
+                <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-brand-400"></span>
+                <span className="leading-relaxed">{pt.replace(/^[•\-\*]\s*/, "")}</span>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="text-xs italic text-slate-400">
+            {rawText || "Tidak ada rincian teks pada slide ini."}
+          </p>
+        )}
+      </div>
+
+      <div className="mt-4 flex items-center justify-between border-t border-white/10 pt-2 text-[10px] text-slate-400">
+        <span>belajar.skuy · Presentation Preview</span>
+        <span className="font-mono">#{slideIndex + 1}</span>
+      </div>
+    </div>
+  );
+}
+
 export default async function SimulationDetailPage({
   params,
 }: {
@@ -349,16 +409,23 @@ export default async function SimulationDetailPage({
                 </div>
 
                 {r.prompt_text && (
-                  <p
-                    className={`mb-3 rounded-lg bg-surface-2 px-3 py-2 text-xs text-slate-500 ${
-                      isInterview ? "" : "line-clamp-2"
-                    }`}
-                  >
-                    <span className="font-semibold">
-                      {isInterview ? "Pertanyaan:" : "Isi slide:"}
-                    </span>{" "}
-                    {r.prompt_text}
-                  </p>
+                  isInterview ? (
+                    <div className="mb-4 rounded-xl border border-brand-500/20 bg-brand-500/5 p-4 text-xs">
+                      <div className="mb-1 flex items-center gap-2 font-bold text-brand-600">
+                        <i className="bi bi-chat-left-quote-fill"></i>
+                        Pertanyaan Wawancara:
+                      </div>
+                      <p className="text-sm font-medium leading-relaxed text-slate-800 dark:text-slate-100">
+                        {r.prompt_text}
+                      </p>
+                    </div>
+                  ) : (
+                    <SlidePresentationCard
+                      slideIndex={r.index}
+                      totalSlides={totalItems}
+                      rawText={r.prompt_text}
+                    />
+                  )
                 )}
 
                 {r.transcript ? (

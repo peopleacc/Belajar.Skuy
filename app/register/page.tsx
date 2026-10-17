@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient, supabaseConfigured } from "@/lib/supabase/client";
 import { recordLogin } from "@/lib/loginEvents";
+import { getAppUrl } from "@/lib/url";
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -29,7 +30,7 @@ export default function RegisterPage() {
       password,
       options: {
         data: { username, full_name: fullName },
-        emailRedirectTo: `${location.origin}/auth/callback`,
+        emailRedirectTo: `${getAppUrl()}/auth/callback`,
       },
     });
 

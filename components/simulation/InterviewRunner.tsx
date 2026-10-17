@@ -17,30 +17,88 @@ import { VoiceFrequency } from "@/components/simulation/VoiceFrequency";
 
 const MAX_ANSWER_SECONDS = 180; // 3 menit/jawaban — lebih pendek dari slide presentasi
 const CARD = "rounded-sm bg-white shadow-card";
-const LEVELS = [
-  { value: "fresh", label: "Fresh graduate" },
-  { value: "menengah", label: "Menengah" },
-  { value: "senior", label: "Senior" },
-] as const;
+const LEVELS: {
+  value: "fresh" | "menengah" | "senior";
+  label: string;
+  desc: string;
+  icon: string;
+}[] = [
+  {
+    value: "fresh",
+    label: "Fresh Graduate",
+    desc: "0 - 1 th pengalaman. Konsep fundamental & pemahaman dasar.",
+    icon: "bi-mortarboard-fill",
+  },
+  {
+    value: "menengah",
+    label: "Tingkat Menengah",
+    desc: "2 - 4 th pengalaman. Best practice & studi kasus proyek riil.",
+    icon: "bi-briefcase-fill",
+  },
+  {
+    value: "senior",
+    label: "Tingkat Senior",
+    desc: "5+ th pengalaman. Arsitektur sistem, trade-off, & strategi.",
+    icon: "bi-award-fill",
+  },
+];
 
 type Phase = "setup" | "running" | "finishing";
 
 // Fitur DD — mode tampilan pertanyaan. Preferensi tampilan CLIENT MURNI, tidak
 // dikirim/disimpan ke server (beda dari wantVisual yang memengaruhi metrik).
 type QuestionMode = "text" | "text-voice" | "voice-only";
-const QUESTION_MODES: { value: QuestionMode; label: string; icon: string }[] = [
-  { value: "text", label: "Teks", icon: "📄" },
-  { value: "text-voice", label: "Teks + Suara", icon: "🔊" },
-  { value: "voice-only", label: "Suara saja", icon: "🎧" },
+const QUESTION_MODES: {
+  value: QuestionMode;
+  label: string;
+  desc: string;
+  icon: string;
+}[] = [
+  {
+    value: "text",
+    label: "Teks Saja",
+    desc: "Pertanyaan tampil teks di layar tanpa suara otomatis.",
+    icon: "bi-file-earmark-text-fill",
+  },
+  {
+    value: "text-voice",
+    label: "Teks + Suara",
+    desc: "Pertanyaan dibacakan suara AI dan teks tetap tampil.",
+    icon: "bi-volume-up-fill",
+  },
+  {
+    value: "voice-only",
+    label: "Suara Saja",
+    desc: "Teks disembunyikan. Latih mendengar seperti telepon riil.",
+    icon: "bi-headphones",
+  },
 ];
 
 // Fitur DL — bahasa sesi. Bukan cuma logat suara: pertanyaan yang disusun AI,
 // transkrip jawaban, dan laporan akhir semuanya ikut bahasa ini. Kalau cuma
 // suaranya yang diganti, hasilnya suara Inggris membacakan teks Indonesia.
 type SessionLang = "id" | "en";
-const SESSION_LANGS: { value: SessionLang; label: string; speech: string }[] = [
-  { value: "id", label: "🇮🇩 Suara Indonesia", speech: "id-ID" },
-  { value: "en", label: "🇬🇧 Suara Inggris", speech: "en-US" },
+const SESSION_LANGS: {
+  value: SessionLang;
+  label: string;
+  desc: string;
+  flag: string;
+  speech: string;
+}[] = [
+  {
+    value: "id",
+    label: "Bahasa Indonesia",
+    desc: "Pertanyaan, transkrip, laporan, & suara dalam Bahasa Indonesia.",
+    flag: "🇮🇩",
+    speech: "id-ID",
+  },
+  {
+    value: "en",
+    label: "English (Global)",
+    desc: "Sesi penuh Bahasa Inggris untuk persiapan wawancara global.",
+    flag: "🇬🇧",
+    speech: "en-US",
+  },
 ];
 
 export default function InterviewRunner({
@@ -281,23 +339,41 @@ export default function InterviewRunner({
           </div>
 
           <div>
-            <label className="mb-1 block text-xs font-semibold text-slate-600">
+            <label className="mb-2 block text-xs font-semibold text-slate-600">
               Tingkat pengalaman
             </label>
-            <div className="flex gap-2">
-              {LEVELS.map((l) => (
-                <button
-                  key={l.value}
-                  onClick={() => setLevel(l.value)}
-                  className={`flex-1 rounded-xl border px-3 py-2 text-xs font-semibold transition ${
-                    level === l.value
-                      ? "border-brand-500 bg-brand-500/10 text-brand-600"
-                      : "border-slate-200 text-slate-500 hover:bg-surface-2"
-                  }`}
-                >
-                  {l.label}
-                </button>
-              ))}
+            <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
+              {LEVELS.map((l) => {
+                const active = level === l.value;
+                return (
+                  <button
+                    key={l.value}
+                    type="button"
+                    onClick={() => setLevel(l.value)}
+                    className={`group relative flex flex-col items-start rounded-xl border p-3.5 text-left transition hover:-translate-y-0.5 hover:shadow-sm ${
+                      active
+                        ? "border-brand-500 bg-brand-500/10 text-brand-700 shadow-sm ring-1 ring-brand-500/20"
+                        : "border-slate-200 bg-white hover:border-slate-300"
+                    }`}
+                  >
+                    <span
+                      className={`mb-2.5 flex h-9 w-9 items-center justify-center rounded-lg text-lg transition ${
+                        active
+                          ? "bg-brand-500 text-white"
+                          : "bg-brand-500/10 text-brand-600 group-hover:bg-brand-500/20"
+                      }`}
+                    >
+                      <i className={`bi ${l.icon}`}></i>
+                    </span>
+                    <p className={`text-xs font-bold ${active ? "text-brand-700" : "text-slate-800"}`}>
+                      {l.label}
+                    </p>
+                    <p className="mt-1 text-[11px] leading-relaxed text-slate-500">
+                      {l.desc}
+                    </p>
+                  </button>
+                );
+              })}
             </div>
           </div>
 
@@ -348,23 +424,38 @@ export default function InterviewRunner({
         {/* Fitur DL — bahasa sesi. Ditampilkan APA PUN dukungan TTS, karena
             pengaruhnya bukan cuma ke suara: pertanyaan, transkrip, dan laporan
             akhir juga ikut bahasa ini. */}
-        <div className="mt-5 rounded-xl border border-border bg-surface-2 px-4 py-3">
+        <div className="mt-5 rounded-xl border border-border bg-surface-2 p-4">
           <p className="mb-2 text-xs font-semibold text-slate-600">Bahasa sesi</p>
-          <div className="flex gap-2">
-            {SESSION_LANGS.map((l) => (
-              <button
-                key={l.value}
-                type="button"
-                onClick={() => setSessionLang(l.value)}
-                className={`flex-1 rounded-xl border px-3 py-2 text-xs font-semibold transition ${
-                  sessionLang === l.value
-                    ? "border-brand-500 bg-brand-500/10 text-brand-600"
-                    : "border-slate-200 text-slate-500 hover:bg-surface-2"
-                }`}
-              >
-                {l.label}
-              </button>
-            ))}
+          <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+            {SESSION_LANGS.map((l) => {
+              const active = sessionLang === l.value;
+              return (
+                <button
+                  key={l.value}
+                  type="button"
+                  onClick={() => setSessionLang(l.value)}
+                  className={`group relative flex flex-col items-start rounded-xl border p-3.5 text-left transition hover:-translate-y-0.5 hover:shadow-sm ${
+                    active
+                      ? "border-brand-500 bg-brand-500/10 text-brand-700 shadow-sm ring-1 ring-brand-500/20"
+                      : "border-slate-200 bg-white hover:border-slate-300"
+                  }`}
+                >
+                  <span
+                    className={`mb-2 flex h-8 w-8 items-center justify-center rounded-lg text-base transition ${
+                      active ? "bg-brand-500/20" : "bg-slate-100 group-hover:bg-slate-200"
+                    }`}
+                  >
+                    {l.flag}
+                  </span>
+                  <p className={`text-xs font-bold ${active ? "text-brand-700" : "text-slate-800"}`}>
+                    {l.label}
+                  </p>
+                  <p className="mt-1 text-[11px] leading-relaxed text-slate-500">
+                    {l.desc}
+                  </p>
+                </button>
+              );
+            })}
           </div>
           <p className="mt-2 text-[11px] leading-relaxed text-slate-400">
             Menentukan bahasa pertanyaan, transkrip jawaban, laporan akhir, dan suara
@@ -373,23 +464,40 @@ export default function InterviewRunner({
         </div>
 
         {ttsSupported && (
-          <div className="mt-5 rounded-xl border border-border bg-surface-2 px-4 py-3">
+          <div className="mt-5 rounded-xl border border-border bg-surface-2 p-4">
             <p className="mb-2 text-xs font-semibold text-slate-600">Mode pertanyaan</p>
-            <div className="flex gap-2">
-              {QUESTION_MODES.map((m) => (
-                <button
-                  key={m.value}
-                  type="button"
-                  onClick={() => setQuestionMode(m.value)}
-                  className={`flex-1 rounded-xl border px-3 py-2 text-xs font-semibold transition ${
-                    questionMode === m.value
-                      ? "border-brand-500 bg-brand-500/10 text-brand-600"
-                      : "border-slate-200 text-slate-500 hover:bg-surface-2"
-                  }`}
-                >
-                  {m.icon} {m.label}
-                </button>
-              ))}
+            <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
+              {QUESTION_MODES.map((m) => {
+                const active = questionMode === m.value;
+                return (
+                  <button
+                    key={m.value}
+                    type="button"
+                    onClick={() => setQuestionMode(m.value)}
+                    className={`group relative flex flex-col items-start rounded-xl border p-3.5 text-left transition hover:-translate-y-0.5 hover:shadow-sm ${
+                      active
+                        ? "border-brand-500 bg-brand-500/10 text-brand-700 shadow-sm ring-1 ring-brand-500/20"
+                        : "border-slate-200 bg-white hover:border-slate-300"
+                    }`}
+                  >
+                    <span
+                      className={`mb-2.5 flex h-9 w-9 items-center justify-center rounded-lg text-lg transition ${
+                        active
+                          ? "bg-brand-500 text-white"
+                          : "bg-brand-500/10 text-brand-600 group-hover:bg-brand-500/20"
+                      }`}
+                    >
+                      <i className={`bi ${m.icon}`}></i>
+                    </span>
+                    <p className={`text-xs font-bold ${active ? "text-brand-700" : "text-slate-800"}`}>
+                      {m.label}
+                    </p>
+                    <p className="mt-1 text-[11px] leading-relaxed text-slate-500">
+                      {m.desc}
+                    </p>
+                  </button>
+                );
+              })}
             </div>
             <p className="mt-2 text-[11px] leading-relaxed text-slate-400">
               &quot;Suara saja&quot; menyembunyikan teks pertanyaan — dituntut dengar &amp;
@@ -462,7 +570,7 @@ export default function InterviewRunner({
                       : "text-slate-400 hover:bg-white"
                   }`}
                 >
-                  {m.icon}
+                  <i className={`bi ${m.icon}`}></i>
                 </button>
               ))}
             </div>

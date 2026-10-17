@@ -109,6 +109,20 @@ const dictionaries = {
       streakDays: "hari beruntun",
       supabaseWarning: "Supabase belum dikonfigurasi. Isi",
       supabaseWarningTail: "agar dashboard menampilkan data asli.",
+      quickActions: {
+        generateCourse: {
+          title: "Generate Course",
+          desc: "Susun kurikulum lengkap dari satu topik — bab bertingkat, materi mendalam, video referensi, dan kuis.",
+          cta: "Buat Course Baru",
+          icon: "bi-mortarboard-fill",
+        },
+        customQuiz: {
+          title: "Kuis Kustom",
+          desc: "Uji pemahamanmu secara instan — buat kuis latihan mandiri dari topik bebas, catatan materi, atau file PDF.",
+          cta: "Buat Kuis Baru",
+          icon: "bi-pencil-square",
+        },
+      },
       stats: {
         chapters: "Bab Dipelajari",
         courses: "Kursus Dibuat",
@@ -169,8 +183,29 @@ const dictionaries = {
     },
     simulationDash: {
       subtitle: "Latih presentasimu — narasi tiap slide ditranskrip dan dinilai.",
-      newPresentation: "+ Presentasi",
-      newInterview: "+ Wawancara",
+      quickActions: {
+        presentation: {
+          title: "Simulasi Presentasi",
+          desc: "Unggah dokumen slide (.pdf), rekam penjelasanmu per slide, dan dapatkan analisis instan tentang struktur serta tempo bicara.",
+          cta: "Mulai Presentasi",
+          icon: "bi-easel2-fill",
+          badge: "Slide & Voice",
+        },
+        wawancara: {
+          title: "Simulasi Wawancara",
+          desc: "Latih kemampuan berbicara secara interaktif berbasis suara dengan topik bebas atau kustom untuk mengasah respon cepat.",
+          cta: "Mulai Wawancara",
+          icon: "bi-mic-fill",
+          badge: "Voice AI",
+        },
+        interview: {
+          title: "Simulasi Interview Kerja",
+          desc: "Persiapkan wawancara kerja profesional dengan pertanyaan situasional dan teknis terarah serta evaluasi performa menyeluruh.",
+          cta: "Mulai Interview",
+          icon: "bi-briefcase-fill",
+          badge: "Karir",
+        },
+      },
       emptyTitle: "Belum ada sesi",
       emptyBody:
         "Mulai sesi pertamamu — presentasi (unggah .pdf lalu jelaskan per slide) atau wawancara (AI bertanya sesuai posisi yang kamu tuju). Keduanya dinilai dari isi jawaban dan cara penyampaian.",
@@ -547,6 +582,20 @@ const dictionaries = {
       streakDays: "day streak",
       supabaseWarning: "Supabase is not configured yet. Fill in",
       supabaseWarningTail: "so the dashboard shows real data.",
+      quickActions: {
+        generateCourse: {
+          title: "Generate Course",
+          desc: "Build a complete curriculum from any topic — nested chapters, in-depth lessons, video references, and quizzes.",
+          cta: "Create New Course",
+          icon: "bi-mortarboard-fill",
+        },
+        customQuiz: {
+          title: "Custom Quiz",
+          desc: "Test your understanding instantly — generate practice quizzes from custom topics, study notes, or uploaded PDFs.",
+          cta: "Create New Quiz",
+          icon: "bi-pencil-square",
+        },
+      },
       stats: {
         chapters: "Chapters Studied",
         courses: "Courses Created",
@@ -607,8 +656,29 @@ const dictionaries = {
     },
     simulationDash: {
       subtitle: "Practice your presentation — each slide's narration is transcribed and scored.",
-      newPresentation: "+ Presentation",
-      newInterview: "+ Interview",
+      quickActions: {
+        presentation: {
+          title: "Presentation Simulation",
+          desc: "Upload slides (.pdf), record your narration per slide, and receive instant feedback on structure and pace.",
+          cta: "Start Presentation",
+          icon: "bi-easel2-fill",
+          badge: "Slide & Voice",
+        },
+        wawancara: {
+          title: "Voice Interview Practice",
+          desc: "Practice speaking interactively with voice AI on any topic to improve articulation and quick responses.",
+          cta: "Start Practice",
+          icon: "bi-mic-fill",
+          badge: "Voice AI",
+        },
+        interview: {
+          title: "Job Interview Simulation",
+          desc: "Prepare for professional job interviews with targeted technical and behavioral questions plus comprehensive scoring.",
+          cta: "Start Interview",
+          icon: "bi-briefcase-fill",
+          badge: "Career",
+        },
+      },
       emptyTitle: "No sessions yet",
       emptyBody:
         "Start your first session — a presentation (upload a .pdf and explain it slide by slide) or an interview (AI asks questions based on the role you're targeting). Both are scored on content and delivery.",

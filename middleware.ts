@@ -34,6 +34,17 @@ export async function middleware(request: NextRequest) {
 
   const path = request.nextUrl.pathname;
 
+  // Tangani kasus di mana Supabase OAuth me-redirect ke "/" atau halaman lain dengan ?code=...
+  // (misalnya jika Supabase fallback ke Site URL default).
+  const authCode = request.nextUrl.searchParams.get("code");
+  if (authCode && !path.startsWith("/auth/callback")) {
+    const callbackUrl = new URL("/auth/callback", request.url);
+    request.nextUrl.searchParams.forEach((val, key) => {
+      callbackUrl.searchParams.set(key, val);
+    });
+    return NextResponse.redirect(callbackUrl);
+  }
+
   // Rute yang wajib login (Fitur BG menambah /portal & /simulation, Fitur EF menambah /profile)
   const PRIVATE = ["/dashboard", "/portal", "/simulation", "/profile"];
   if (!user && PRIVATE.some((p) => path.startsWith(p))) {
