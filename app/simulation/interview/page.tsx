@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import InterviewRunner from "@/components/simulation/InterviewRunner";
 import SessionHistorySection from "@/components/simulation/SessionHistorySection";
 import { getSessionUser } from "@/lib/session";
+import { getUserLimits } from "@/lib/plans";
 
 export const metadata: Metadata = {
   title: "Simulasi Wawancara — belajar.skuy",
@@ -13,9 +14,14 @@ export default async function NewInterviewPage() {
   const user = await getSessionUser();
   if (!user) redirect("/login");
 
+  const limits = await getUserLimits(user.planCode ?? "free");
+
   return (
     <main className="mx-auto max-w-6xl p-8">
-      <InterviewRunner historySlot={<SessionHistorySection kind="interview" />} />
+      <InterviewRunner
+        skeletonAllowed={limits.cameraSkeleton}
+        historySlot={<SessionHistorySection kind="interview" />}
+      />
     </main>
   );
 }

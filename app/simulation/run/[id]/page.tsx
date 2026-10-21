@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
 import InterviewRunner from "@/components/simulation/InterviewRunner";
 import { getSessionUser } from "@/lib/session";
+import { getUserLimits } from "@/lib/plans";
 import { createClient } from "@/lib/supabase/server";
 
 export const metadata: Metadata = {
@@ -21,6 +22,8 @@ export default async function RunSessionPage({
   const { id } = await params;
   const user = await getSessionUser();
   if (!user) redirect("/login");
+
+  const limits = await getUserLimits(user.planCode ?? "free");
 
   // RLS menjaga kepemilikan — sesi orang lain tidak akan terbaca (404).
   const supabase = await createClient();
@@ -45,6 +48,7 @@ export default async function RunSessionPage({
         presetSessionId={id}
         presetQuestions={questions}
         title={session.context?.role ?? undefined}
+        skeletonAllowed={limits.cameraSkeleton}
       />
     </main>
   );

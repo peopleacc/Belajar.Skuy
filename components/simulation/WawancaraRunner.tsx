@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useSessionRecorder } from "@/components/simulation/useSessionRecorder";
 import { VoiceFrequency } from "@/components/simulation/VoiceFrequency";
+import { PreparationScreen } from "@/components/simulation/PreparationScreen";
+import { LiveCadenceHUD } from "@/components/simulation/LiveCadenceHUD";
 
 /**
  * planning-update-15 — sesi simulasi wawancara BEBAS. Berbeda dari InterviewRunner
@@ -16,10 +18,10 @@ import { VoiceFrequency } from "@/components/simulation/VoiceFrequency";
  * fase setup dan payload yang dikirim ke API.
  */
 
-const MAX_ANSWER_SECONDS = 180; // 3 menit/jawaban
+const MAX_ANSWER_SECONDS = 120; // 2 menit/jawaban — standardisasi durasi per pertanyaan
 const CARD = "rounded-sm bg-white shadow-card";
 
-type Phase = "setup" | "running" | "finishing";
+type Phase = "setup" | "preparing" | "running" | "finishing";
 type InputMode = "prompt" | "custom";
 
 type QuestionMode = "text" | "text-voice" | "voice-only";
@@ -75,8 +77,11 @@ const SESSION_LANGS: {
 
 export default function WawancaraRunner({
   historySlot,
+  skeletonAllowed = false,
 }: {
   historySlot?: React.ReactNode;
+  /** Hak akses visual kerangka pose/deteksi wajah (Update 19) */
+  skeletonAllowed?: boolean;
 }) {
   const router = useRouter();
 
@@ -93,6 +98,7 @@ export default function WawancaraRunner({
 
   // ── Pengaturan umum ──
   const [wantVisual, setWantVisual] = useState(true);
+  const [skeletonWanted, setSkeletonWanted] = useState(true);
   const [sessionLang, setSessionLang] = useState<SessionLang>("id");
   const [questionMode, setQuestionMode] = useState<QuestionMode>("text");
 
@@ -107,6 +113,7 @@ export default function WawancaraRunner({
 
   const sessionIdRef = useRef<string | null>(null);
   const previewRef = useRef<HTMLVideoElement>(null);
+  const overlayCanvasRef = useRef<HTMLCanvasElement>(null);
   const voicesRef = useRef<SpeechSynthesisVoice[]>([]);
 
   useEffect(() => {
@@ -155,6 +162,7 @@ export default function WawancaraRunner({
   const rec = useSessionRecorder({
     maxSegmentSeconds: MAX_ANSWER_SECONDS,
     wantVisual,
+    language: sessionLang,
   });
 
   // Tandai 'abandoned' kalau tab ditutup di tengah sesi.
@@ -178,8 +186,9 @@ export default function WawancaraRunner({
     if (phase === "running" && previewRef.current && rec.camStreamRef.current) {
       previewRef.current.srcObject = rec.camStreamRef.current;
       void previewRef.current.play().catch(() => {});
+      rec.setOverlayCanvas(overlayCanvasRef.current, skeletonWanted && skeletonAllowed);
     }
-  }, [phase, rec.visualState, rec.camStreamRef]);
+  }, [phase, rec, skeletonWanted, skeletonAllowed]);
 
   // ── Helper pertanyaan kustom ──
   function addQuestion() {
@@ -202,7 +211,7 @@ export default function WawancaraRunner({
     });
   }
 
-  async function start() {
+  async function goToPreparation() {
     setError(null);
 
     // Validasi lokal
@@ -225,8 +234,15 @@ export default function WawancaraRunner({
     }
 
     setStarting(true);
+    await rec.prepareMedia(setStartNote);
+    setStarting(false);
+    setStartNote("");
+    setPhase("preparing");
+  }
 
-    const { micOk, visualOk } = await rec.prepareMedia(setStartNote);
+  async function startOfficialSession() {
+    setError(null);
+    setStarting(true);
 
     try {
       setStartNote(
@@ -255,13 +271,19 @@ export default function WawancaraRunner({
         body: JSON.stringify({
           type: "wawancara",
           context,
-          settings: { language: sessionLang, noMic: !micOk, visualEnabled: visualOk },
+          settings: {
+            language: sessionLang,
+            noMic: rec.noMic,
+            visualEnabled: rec.visualState !== "failed" && wantVisual,
+            skeletonEnabled: skeletonWanted && skeletonAllowed,
+          },
         }),
       });
       const data = await res.json();
       if (!res.ok) {
         setError(data.error ?? "Gagal membuat sesi.");
-        rec.releaseMedia();
+        setStarting(false);
+        setPhase("setup");
         return;
       }
       sessionIdRef.current = data.sessionId;
@@ -272,6 +294,8 @@ export default function WawancaraRunner({
       const qData = await qRes.json();
       if (!qRes.ok || !Array.isArray(qData.questions) || qData.questions.length === 0) {
         setError("Sesi dibuat tapi pertanyaannya gagal dimuat. Buka dari daftar sesi.");
+        setStarting(false);
+        setPhase("setup");
         return;
       }
       setQuestions(qData.questions);
@@ -280,7 +304,7 @@ export default function WawancaraRunner({
       rec.beginSegment();
     } catch {
       setError("Tidak bisa terhubung ke server. Coba lagi.");
-      rec.releaseMedia();
+      setPhase("setup");
     } finally {
       setStarting(false);
       setStartNote("");
@@ -474,6 +498,38 @@ export default function WawancaraRunner({
           </span>
         </label>
 
+        {/* Visual Kerangka / Pose Skeleton Toggle (Fitur Update 19) */}
+        <div
+          className={`mt-3 flex items-start justify-between gap-4 rounded-xl border p-4 transition ${
+            skeletonAllowed
+              ? "border-brand-200 bg-brand-50/40"
+              : "border-slate-200 bg-slate-50 opacity-75"
+          }`}
+        >
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-semibold text-slate-800">
+                Aktifkan Visual Kerangka di Deteksi Kamera
+              </span>
+              {!skeletonAllowed && (
+                <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700">
+                  🔒 Khusus Premium Presentasi, Gabungan, &amp; Pro
+                </span>
+              )}
+            </div>
+            <p className="text-[11px] leading-relaxed text-slate-500">
+              Tampilkan garis kerangka tubuh, sendi tangan, dan titik pupil iris secara visual di kamera peserta wawancara.
+            </p>
+          </div>
+          <input
+            type="checkbox"
+            checked={skeletonWanted && skeletonAllowed}
+            disabled={!skeletonAllowed || starting}
+            onChange={(e) => setSkeletonWanted(e.target.checked)}
+            className="mt-1 h-4 w-4 rounded accent-brand-500 disabled:cursor-not-allowed"
+          />
+        </div>
+
         {/* ── Bahasa Sesi ── */}
         <div className="mt-5 rounded-xl border border-border bg-surface-2 p-4">
           <p className="mb-2 text-xs font-semibold text-slate-600">Bahasa sesi</p>
@@ -564,14 +620,14 @@ export default function WawancaraRunner({
         )}
 
         <button
-          onClick={() => void start()}
+          onClick={() => void goToPreparation()}
           disabled={starting}
-          className="mt-5 w-full rounded-xl bg-brand-500 py-3.5 text-sm font-semibold text-white shadow-lg shadow-brand-500/25 transition hover:bg-brand-600 disabled:opacity-60"
+          className="mt-5 w-full rounded-xl bg-brand-500 py-3.5 text-sm font-semibold text-white shadow-lg shadow-brand-500/25 transition hover:bg-brand-600 active:scale-95 disabled:opacity-60"
         >
-          {starting ? `⏳ ${startNote || "Menyiapkan…"}` : "🎙️ Mulai Wawancara"}
+          {starting ? `⏳ ${startNote || "Menyiapkan…"}` : "👉 Lanjut ke Persiapan Simulasi"}
         </button>
         <p className="mt-2 text-center text-[11px] text-slate-400">
-          🔒 Rekaman tidak disimpan — hanya transkrip &amp; angka metriknya.
+          Izin mikrofon{wantVisual ? " & kamera" : ""} diminta saat masuk tahap persiapan. 🔒 Rekaman tidak disimpan — hanya transkrip &amp; angka metriknya.
         </p>
       </div>
     );
@@ -581,6 +637,26 @@ export default function WawancaraRunner({
         {card}
         {historySlot}
       </>
+    );
+  }
+
+  // ==== FASE PERSIAPAN MANDIRI ====
+  if (phase === "preparing") {
+    return (
+      <PreparationScreen
+        title={`Persiapan Wawancara: ${title || "Topik Kustom"}`}
+        subtitle="Periksa kesiapan kamera dan mikrofon Anda sebelum simulasi wawancara dimulai."
+        camStream={rec.camStreamRef.current}
+        micStream={rec.micStreamRef.current}
+        cameraReady={rec.visualState !== "failed" && wantVisual}
+        voiceReady={!rec.noMic}
+        simulationReady={Boolean(title.trim().length >= 3)}
+        skeletonEnabled={skeletonWanted && skeletonAllowed}
+        starting={starting}
+        startNote={startNote}
+        onStart={() => void startOfficialSession()}
+        onCancel={() => setPhase("setup")}
+      />
     );
   }
 
@@ -645,32 +721,82 @@ export default function WawancaraRunner({
         </div>
       </div>
 
-      <div className="grid gap-6 md:grid-cols-[200px_1fr]">
-        {/* ── kiri: kamera kecil ── */}
-        {rec.visualState === "on" && (
-          <div className="rounded-xl border border-border bg-surface-2 p-3 md:self-start">
-            {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
-            <video
-              ref={previewRef}
-              muted
-              playsInline
-              className="w-full -scale-x-100 rounded-lg border border-border object-cover"
-            />
-            <p className="mt-2 text-[11px] leading-snug text-slate-400">
-              🔒 Kamera aktif — dianalisis di browser, tidak disimpan &amp; tidak dikirim.
-            </p>
-          </div>
-        )}
+      {/* Grid Layout Sesuai Wireframe Gambar 3 */}
+      <div className="grid gap-6 lg:grid-cols-[1.8fr_1fr]">
+        {/* ================= KOLOM KIRI ================= */}
+        <div className="flex flex-col gap-4">
+          {/* Kotak Atas: Kamera Kandidat Besar */}
+          {rec.visualState === "on" ? (
+            <div className="rounded-xl border border-border bg-surface-2 p-4 shadow-sm">
+              <div className="flex items-center justify-between mb-3">
+                <p className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-slate-600">
+                  <span>📷</span> Kamera Kandidat
+                </p>
+                <div className="flex items-center gap-2">
+                  {skeletonWanted && skeletonAllowed && (
+                    <span className="rounded-md bg-purple-600/90 px-2 py-0.5 text-[9px] font-bold text-white shadow-sm">
+                      Skeleton ON
+                    </span>
+                  )}
+                  <span className="flex items-center gap-1 rounded-full bg-rose-500/10 px-2.5 py-0.5 text-[11px] font-semibold text-rose-500">
+                    <span className="h-2 w-2 rounded-full bg-rose-500 animate-pulse" /> REC {rec.mmss}
+                  </span>
+                </div>
+              </div>
+              <div className="relative aspect-video w-full overflow-hidden rounded-xl border border-border bg-slate-900 shadow-inner">
+                {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+                <video
+                  ref={previewRef}
+                  muted
+                  playsInline
+                  className="h-full w-full -scale-x-100 object-cover"
+                />
+                <canvas
+                  ref={overlayCanvasRef}
+                  className="pointer-events-none absolute inset-0 h-full w-full -scale-x-100 object-cover"
+                />
+              </div>
+              <p className="mt-2 text-[11px] text-slate-400">
+                🔒 Dianalisis secara lokal di browser — tatap ke arah lensa untuk kontak mata optimal.
+              </p>
+            </div>
+          ) : (
+            <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center text-slate-400">
+              <i className="bi bi-camera-video-off text-2xl mb-1" />
+              <p className="text-xs">Kamera tidak aktif</p>
+            </div>
+          )}
 
-        {/* ── kanan: pertanyaan + suara + tombol ── */}
-        <div>
-          <div className="rounded-xl border border-brand-200 bg-brand-50/40 px-5 py-6">
-            <p className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-brand-500">
-              👤 Pewawancara bertanya
-            </p>
+          {/* Kotak Bawah: Pertanyaan Wawancara & Sesi Tanya Jawab */}
+          <div className="rounded-xl border border-brand-200 bg-brand-50/40 p-5 shadow-sm">
+            <div className="flex items-center justify-between mb-3 border-b border-brand-200/50 pb-2">
+              <p className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-brand-600">
+                👤 Pertanyaan Pewawancara
+              </p>
+              {ttsSupported && (
+                <div className="flex items-center gap-1 rounded-full border border-brand-200 bg-white p-1">
+                  {QUESTION_MODES.map((m) => (
+                    <button
+                      key={m.value}
+                      type="button"
+                      title={m.label}
+                      onClick={() => setQuestionMode(m.value)}
+                      className={`rounded-full px-2 py-0.5 text-xs transition ${
+                        questionMode === m.value
+                          ? "bg-brand-500 text-white"
+                          : "text-slate-400 hover:bg-slate-100"
+                      }`}
+                    >
+                      <i className={`bi ${m.icon}`}></i>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
             {questionMode === "voice-only" ? (
-              <div className="mt-3 flex items-center justify-between gap-3">
-                <p className="text-sm text-slate-500">
+              <div className="my-3 flex items-center justify-between gap-3 rounded-lg bg-white p-3 border border-brand-100">
+                <p className="text-sm text-slate-600">
                   {speaking ? "🔊 Membacakan pertanyaan…" : "✓ Pertanyaan sudah dibacakan"}
                 </p>
                 <button
@@ -682,33 +808,63 @@ export default function WawancaraRunner({
                 </button>
               </div>
             ) : (
-              <p className="mt-2 text-lg font-semibold leading-relaxed">{questions[index]}</p>
+              <p className="my-3 text-base md:text-lg font-semibold leading-relaxed text-slate-800">
+                {questions[index]}
+              </p>
             )}
+
+            {rec.capped && (
+              <p className="mt-3 rounded-lg bg-amber-500/10 px-3 py-2 text-xs text-amber-600">
+                Rekaman jawaban ini berhenti di batas 2 menit — silakan lanjut ke pertanyaan berikutnya.
+              </p>
+            )}
+            {rec.failedUploads > 0 && (
+              <p className="mt-3 rounded-lg bg-rose-500/10 px-3 py-2 text-xs text-rose-500">
+                {rec.failedUploads} jawaban gagal terkirim — transkripnya akan kosong di hasil.
+              </p>
+            )}
+
+            <div className="mt-5 flex items-center justify-between border-t border-brand-100 pt-4">
+              <span className="text-xs text-slate-500 font-medium">
+                Pertanyaan {index + 1} dari {questions.length}
+              </span>
+              <button
+                onClick={isLast ? () => void finish() : nextQuestion}
+                className="rounded-xl bg-brand-500 px-6 py-2.5 text-sm font-semibold text-white shadow-lg shadow-brand-500/25 transition hover:bg-brand-600 active:scale-95"
+              >
+                {isLast ? "✅ Selesaikan Wawancara" : "Pertanyaan Berikutnya →"}
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* ================= KOLOM KANAN ================= */}
+        <div className="flex flex-col gap-4">
+          {/* Kotak Atas: Timer & Preview Fokus Mata / Live Cadence HUD */}
+          <div className="rounded-xl border border-border bg-surface-2 p-4 shadow-sm space-y-3">
+            <div className="flex items-center justify-between border-b border-border/60 pb-2">
+              <p className="text-xs font-bold uppercase tracking-wider text-slate-600">
+                ⏱️ Timer &amp; Fokus Mata
+              </p>
+              <span className="rounded-full bg-brand-50 px-2 py-0.5 text-[10px] font-bold text-brand-600">
+                Maks 2:00
+              </span>
+            </div>
+            <LiveCadenceHUD cadence={rec.cadence} />
           </div>
 
-          {!rec.noMic && <VoiceFrequency stream={rec.micStreamRef.current} variant="inline" />}
-
-          {rec.capped && (
-            <p className="mt-3 rounded-lg bg-amber-500/10 px-3 py-2 text-xs text-amber-600">
-              Rekaman jawaban ini berhenti di batas 3 menit — lanjut ke pertanyaan
-              berikutnya ya.
-            </p>
+          {/* Kotak Bawah: Frekuensi Suara Masuk */}
+          {!rec.noMic && (
+            <div className="rounded-xl border border-slate-200 bg-surface-2 p-4 shadow-sm">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-[11px] font-bold uppercase tracking-wider text-slate-600">
+                  🎙️ Frekuensi Suara Masuk
+                </p>
+                <span className="text-[10px] text-emerald-600 font-semibold">● Audio Live</span>
+              </div>
+              <VoiceFrequency stream={rec.micStreamRef.current} variant="inline" />
+            </div>
           )}
-          {rec.failedUploads > 0 && (
-            <p className="mt-3 rounded-lg bg-rose-500/10 px-3 py-2 text-xs text-rose-500">
-              {rec.failedUploads} jawaban gagal terkirim — transkripnya akan kosong di
-              hasil.
-            </p>
-          )}
-
-          <div className="mt-6 flex justify-end">
-            <button
-              onClick={isLast ? () => void finish() : nextQuestion}
-              className="rounded-xl bg-brand-500 px-6 py-3 text-sm font-semibold text-white shadow-lg shadow-brand-500/25 transition hover:bg-brand-600"
-            >
-              {isLast ? "✅ Selesaikan Wawancara" : "Pertanyaan Berikutnya →"}
-            </button>
-          </div>
         </div>
       </div>
 

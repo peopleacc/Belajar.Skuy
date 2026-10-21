@@ -414,7 +414,7 @@ export function KuisTab({
           <p className="mt-0.5 text-xs leading-relaxed text-brand-900/70">
             {isEssay(q)
               ? q.answer_mode === "voice"
-                ? "Jelaskan seolah-olah bercerita ke temanmu. Setelah rekaman selesai, transkripnya bisa kamu edit dulu sebelum submit."
+                ? "Jawab dengan suara (maks 3x rekam, maks 400 karakter / 2 menit per soal). Setelah rekaman selesai, transkripnya bisa kamu edit manual sebelum submit."
                 : "Jawab dengan kalimatmu sendiri, sebutkan poin-poin penting yang relevan dengan pertanyaan. Tidak perlu panjang — yang penting isinya tepat."
               : "Baca soal dengan teliti dan eliminasi pilihan yang jelas salah dulu. Kaitkan dengan materi bab yang baru kamu pelajari sebelum memilih."}
           </p>

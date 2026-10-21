@@ -11,6 +11,7 @@ export type PlanLimits = {
   chatMessagesPerChapter: number | null;
   customQuizPerDay: number | null;
   voicePractice: boolean;
+  cameraSkeleton: boolean;
   presentationSessionsPerWeek: number | null;
   interviewSessionsPerWeek: number | null;
 };
@@ -62,6 +63,7 @@ const FALLBACK_USER_LIMITS: PlanLimits = {
   chatMessagesPerChapter: 5,
   customQuizPerDay: 1,
   voicePractice: false,
+  cameraSkeleton: false,
   presentationSessionsPerWeek: 0,
   interviewSessionsPerWeek: 0,
 };

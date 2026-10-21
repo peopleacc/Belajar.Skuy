@@ -6,6 +6,8 @@ import Link from "next/link";
 import { parseSlideFile, type SlideDeck, MAX_SLIDES } from "@/lib/slides";
 import { useSessionRecorder } from "@/components/simulation/useSessionRecorder";
 import { VoiceFrequency } from "@/components/simulation/VoiceFrequency";
+import { PreparationScreen } from "@/components/simulation/PreparationScreen";
+import { LiveCadenceHUD } from "@/components/simulation/LiveCadenceHUD";
 
 /**
  * Fitur BA & BB — alur lengkap sesi simulasi presentasi di browser:
@@ -20,11 +22,11 @@ import { VoiceFrequency } from "@/components/simulation/VoiceFrequency";
  * terkirim hanya teks slide + potongan audio (dibuang server setelah jadi teks).
  */
 
-const MAX_SEGMENT_SECONDS = 300; // 5 menit/slide — jauh di bawah batas 10MB multer
+const MAX_SEGMENT_SECONDS = 120; // 2 menit/slide — standardisasi durasi per slide
 
 const CARD = "rounded-sm bg-white shadow-card";
 
-type Phase = "setup" | "running" | "finishing";
+type Phase = "setup" | "preparing" | "running" | "finishing";
 
 // Fitur DL — bahasa sesi: menentukan bahasa transkrip narasi & laporan penilaian
 // akhir. Presentasi tidak punya TTS (tidak ada yang dibacakan ke user), tapi
@@ -38,6 +40,7 @@ const SESSION_LANGS: { value: SessionLang; label: string }[] = [
 
 export default function SessionRunner({
   historySlot,
+  skeletonAllowed = false,
 }: {
   /**
    * Fitur DF — ringkasan & riwayat sesi sebelumnya, dirender di SERVER lalu
@@ -45,6 +48,8 @@ export default function SessionRunner({
    * layar harus fokus ke slide & kamera, bukan tabel skor lama.
    */
   historySlot?: React.ReactNode;
+  /** Hak akses paket: apakah pengguna memiliki fitur visual kerangka kamera (premium_presentasi, gabungan, pro). */
+  skeletonAllowed?: boolean;
 } = {}) {
   const router = useRouter();
 
@@ -59,16 +64,20 @@ export default function SessionRunner({
   const [scoring, setScoring] = useState(false);
   // Fitur BC — analisis visual bisa DIMATIKAN user (DoD), dan gagal kamera/model ≠ buntu.
   const [visualWanted, setVisualWanted] = useState(true);
+  // Fitur 19 — visual kerangka pose/tangan/mata di kamera (terkunci jika non-premium)
+  const [skeletonWanted, setSkeletonWanted] = useState(false);
   const [renderFailed, setRenderFailed] = useState(false);
   const [sessionLang, setSessionLang] = useState<SessionLang>("id");
 
   const sessionIdRef = useRef<string | null>(null);
   const previewRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const overlayCanvasRef = useRef<HTMLCanvasElement>(null);
 
   const rec = useSessionRecorder({
     maxSegmentSeconds: MAX_SEGMENT_SECONDS,
     wantVisual: visualWanted,
+    language: sessionLang,
   });
 
   // ---- tandai 'abandoned' kalau tab ditutup di tengah sesi ----
@@ -112,8 +121,9 @@ export default function SessionRunner({
     if (phase === "running" && previewRef.current && rec.camStreamRef.current) {
       previewRef.current.srcObject = rec.camStreamRef.current;
       void previewRef.current.play().catch(() => {});
+      rec.setOverlayCanvas(overlayCanvasRef.current, skeletonWanted && skeletonAllowed);
     }
-  }, [phase, rec.visualState, rec.camStreamRef]);
+  }, [phase, rec, skeletonWanted, skeletonAllowed]);
 
   // ============ Setup ============
 
@@ -135,14 +145,22 @@ export default function SessionRunner({
     }
   }
 
-  async function start() {
+  async function goToPreparation() {
     if (!deck) return;
     setError(null);
     setStarting(true);
 
-    // Izin mikrofon & kamera diminta SEKALI di sini (mesin bersama). Ditolak ≠
-    // buntu — sesi tetap jalan tanpa transkrip/visual (DoD BB & BC).
-    const { micOk, visualOk } = await rec.prepareMedia(setStartNote);
+    // Izin mikrofon & kamera diminta saat persiapan
+    await rec.prepareMedia(setStartNote);
+    setStarting(false);
+    setStartNote("");
+    setPhase("preparing");
+  }
+
+  async function startOfficialSession() {
+    if (!deck) return;
+    setError(null);
+    setStarting(true);
 
     try {
       setStartNote("Membuat sesi…");
@@ -151,13 +169,19 @@ export default function SessionRunner({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           slides: deck.slides.map((s) => s.text),
-          settings: { language: sessionLang, noMic: !micOk, visualEnabled: visualOk },
+          settings: {
+            language: sessionLang,
+            noMic: rec.noMic,
+            visualEnabled: rec.visualState !== "failed" && visualWanted,
+            skeletonEnabled: skeletonWanted && skeletonAllowed,
+          },
         }),
       });
       const data = await res.json();
       if (!res.ok) {
         setError(data.error ?? "Gagal membuat sesi.");
         setStarting(false);
+        setPhase("setup");
         return;
       }
       sessionIdRef.current = data.sessionId;
@@ -166,6 +190,7 @@ export default function SessionRunner({
       rec.beginSegment();
     } catch {
       setError("Tidak bisa terhubung ke server. Coba lagi.");
+      setPhase("setup");
     } finally {
       setStarting(false);
       setStartNote("");
@@ -327,15 +352,41 @@ export default function SessionRunner({
               </span>
             </label>
 
+            {/* Fitur 19 — Pengaturan Visual Kerangka (Skeleton) Kamera */}
+            <div className={`mt-3 flex items-start justify-between gap-3 rounded-xl border p-4 ${
+              skeletonAllowed ? "border-slate-200 bg-surface-2" : "border-slate-200 bg-slate-50 opacity-80"
+            }`}>
+              <div className="space-y-0.5">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-semibold text-slate-700">Visual Kerangka Kamera</span>
+                  {!skeletonAllowed && (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800">
+                      🔒 Khusus Premium Presentasi, Gabungan, &amp; Pro
+                    </span>
+                  )}
+                </div>
+                <p className="text-[11px] leading-relaxed text-slate-500">
+                  Tampilkan garis kerangka tubuh, sendi tangan, dan titik pupil iris secara visual di kamera presenter.
+                </p>
+              </div>
+              <input
+                type="checkbox"
+                checked={skeletonWanted && skeletonAllowed}
+                disabled={!skeletonAllowed || starting}
+                onChange={(e) => setSkeletonWanted(e.target.checked)}
+                className="mt-1 h-4 w-4 rounded accent-brand-500 disabled:cursor-not-allowed"
+              />
+            </div>
+
             <button
-              onClick={() => void start()}
+              onClick={() => void goToPreparation()}
               disabled={starting}
-              className="mt-4 w-full rounded-xl bg-brand-500 py-3.5 text-sm font-semibold text-white shadow-lg shadow-brand-500/25 transition hover:bg-brand-600 disabled:opacity-60"
+              className="mt-4 w-full rounded-xl bg-brand-500 py-3.5 text-sm font-semibold text-white shadow-lg shadow-brand-500/25 transition hover:bg-brand-600 active:scale-95 disabled:opacity-60"
             >
-              {starting ? `⏳ ${startNote || "Menyiapkan sesi…"}` : "🎤 Mulai Presentasi"}
+              {starting ? `⏳ ${startNote || "Menyiapkan media…"}` : "👉 Lanjut ke Persiapan Simulasi"}
             </button>
             <p className="mt-2 text-center text-[11px] text-slate-400">
-              Izin mikrofon{visualWanted ? " & kamera" : ""} diminta saat mulai. 🔒 Rekaman
+              Izin mikrofon{visualWanted ? " & kamera" : ""} diminta saat masuk tahap persiapan. 🔒 Rekaman
               tidak disimpan — hanya transkrip & angka metriknya.
             </p>
           </div>
@@ -348,6 +399,26 @@ export default function SessionRunner({
         {card}
         {historySlot}
       </>
+    );
+  }
+
+  // ---- fase persiapan mandiri (halaman penuh, bukan modal) ----
+  if (phase === "preparing") {
+    return (
+      <PreparationScreen
+        title={fileName ? `Persiapan: ${fileName}` : "Persiapan Sesi Presentasi"}
+        subtitle="Periksa kesiapan kamera dan mikrofon Anda sebelum memulai presentasi slide."
+        camStream={rec.camStreamRef.current}
+        micStream={rec.micStreamRef.current}
+        cameraReady={rec.visualState !== "failed" && visualWanted}
+        voiceReady={!rec.noMic}
+        simulationReady={Boolean(deck && deck.slides.length > 0)}
+        skeletonEnabled={skeletonWanted && skeletonAllowed}
+        starting={starting}
+        startNote={startNote}
+        onStart={() => void startOfficialSession()}
+        onCancel={() => setPhase("setup")}
+      />
     );
   }
 
@@ -394,54 +465,73 @@ export default function SessionRunner({
         </div>
       </div>
 
-      {/* Slide : kamera ≈ 6 : 2 — slide yang jadi fokus, kartu kamera cukup jadi
-          pendamping (sebelumnya sidebar 300px tetap, jadi slide terlalu sempit). */}
-      <div className="grid gap-6 lg:grid-cols-[3fr_1fr]">
-        {/* ---- kiri: slide + navigasi ---- */}
-        <div>
-          {slidePreview}
+      {/* Layout Grid Sesuai Wireframe Gambar 2 */}
+      <div className="grid gap-6 lg:grid-cols-[2.2fr_1fr]">
+        {/* ---- kiri: slide + navigasi + frekuensi suara masuk ---- */}
+        <div className="space-y-4">
+          <div>
+            {slidePreview}
 
-          {rec.capped && (
-            <p className="mt-3 rounded-lg bg-amber-500/10 px-3 py-2 text-xs text-amber-600">
-              Rekaman slide ini dihentikan di batas 5 menit — narasi selanjutnya di slide
-              ini tidak ikut ditranskrip. Lanjut ke slide berikutnya ya.
-            </p>
-          )}
-          {rec.failedUploads > 0 && (
-            <p className="mt-3 rounded-lg bg-rose-500/10 px-3 py-2 text-xs text-rose-500">
-              {rec.failedUploads} segmen gagal terkirim — transkrip slide itu akan kosong
-              di hasil.
-            </p>
-          )}
-
-          <div className="mt-4 flex items-center justify-between">
-            <p className="text-xs font-semibold text-slate-400">
-              Slide {index + 1} dari {deck?.slides.length}
-            </p>
-            {isLast ? (
-              <button
-                onClick={() => void finish()}
-                className="rounded-xl bg-brand-500 px-6 py-3 text-sm font-semibold text-white shadow-lg shadow-brand-500/25 transition hover:bg-brand-600"
-              >
-                ✅ Selesaikan Presentasi
-              </button>
-            ) : (
-              <button
-                onClick={nextSlide}
-                className="rounded-xl bg-brand-500 px-6 py-3 text-sm font-semibold text-white shadow-lg shadow-brand-500/25 transition hover:bg-brand-600"
-              >
-                Slide Berikutnya →
-              </button>
+            {rec.capped && (
+              <p className="mt-3 rounded-lg bg-amber-500/10 px-3 py-2 text-xs text-amber-600">
+                Rekaman slide ini dihentikan di batas 2 menit — narasi selanjutnya di slide
+                ini tidak ikut ditranskrip. Lanjut ke slide berikutnya ya.
+              </p>
             )}
+            {rec.failedUploads > 0 && (
+              <p className="mt-3 rounded-lg bg-rose-500/10 px-3 py-2 text-xs text-rose-500">
+                {rec.failedUploads} segmen gagal terkirim — transkrip slide itu akan kosong
+                di hasil.
+              </p>
+            )}
+
+            <div className="mt-4 flex items-center justify-between">
+              <p className="text-xs font-semibold text-slate-400">
+                Slide {index + 1} dari {deck?.slides.length}
+              </p>
+              {isLast ? (
+                <button
+                  onClick={() => void finish()}
+                  className="rounded-xl bg-brand-500 px-6 py-3 text-sm font-semibold text-white shadow-lg shadow-brand-500/25 transition hover:bg-brand-600"
+                >
+                  ✅ Selesaikan Presentasi
+                </button>
+              ) : (
+                <button
+                  onClick={nextSlide}
+                  className="rounded-xl bg-brand-500 px-6 py-3 text-sm font-semibold text-white shadow-lg shadow-brand-500/25 transition hover:bg-brand-600"
+                >
+                  Slide Berikutnya →
+                </button>
+              )}
+            </div>
           </div>
+
+          {/* Kotak Bawah Kiri: Frekuensi Suara Masuk (Wireframe Gambar 2) */}
+          {!rec.noMic && (
+            <div className="rounded-xl border border-slate-200 bg-surface-2 p-3.5 shadow-sm">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                  🎙️ Frekuensi Suara Masuk
+                </p>
+                <span className="text-[10px] text-emerald-600 font-semibold">● Audio Live</span>
+              </div>
+              <VoiceFrequency stream={rec.micStreamRef.current} variant="inline" />
+            </div>
+          )}
         </div>
 
-        {/* ---- kanan: presenter view + voice frequency ---- */}
+        {/* ---- kanan: presenter view + live cadence HUD ---- */}
         <div className="space-y-4">
           {rec.visualState === "on" && (
             <div className="rounded-xl border border-border bg-surface-2 p-3">
               <p className="flex items-center justify-between text-[10px] font-bold uppercase tracking-widest text-slate-400">
                 Presenter View
+                {skeletonWanted && skeletonAllowed && (
+                  <span className="rounded-full bg-brand-500/10 px-2 py-0.5 text-[9px] font-semibold text-brand-600">
+                    Kerangka Aktif
+                  </span>
+                )}
               </p>
               <div className="relative mt-2">
                 {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
@@ -451,17 +541,22 @@ export default function SessionRunner({
                   playsInline
                   className="w-full -scale-x-100 rounded-lg border border-border object-cover"
                 />
-                <span className="absolute bottom-2 left-2 flex items-center gap-1 rounded-full bg-rose-500/90 px-2 py-0.5 text-[10px] font-semibold text-white">
+                <canvas
+                  ref={overlayCanvasRef}
+                  className="pointer-events-none absolute inset-0 h-full w-full -scale-x-100 object-cover"
+                />
+                <span className="absolute bottom-2 left-2 flex items-center gap-1 rounded-full bg-rose-500/90 px-2 py-0.5 text-[10px] font-semibold text-white shadow-sm">
                   <span className="h-1.5 w-1.5 rounded-full bg-white" /> Presenting
                 </span>
               </div>
               <p className="mt-2 text-[11px] leading-snug text-slate-400">
-                📷 Dianalisis di browser — tidak direkam & tidak dikirim.
+                📷 Dianalisis di browser — tidak direkam &amp; tidak dikirim.
               </p>
             </div>
           )}
 
-          {!rec.noMic && <VoiceFrequency stream={rec.micStreamRef.current} variant="card" />}
+          {/* Fitur Update 19: Live Cadence / Realtime WPS Tracker HUD */}
+          <LiveCadenceHUD cadence={rec.cadence} />
         </div>
       </div>
 

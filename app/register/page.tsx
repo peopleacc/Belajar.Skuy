@@ -42,8 +42,8 @@ export default function RegisterPage() {
 
     if (data.session) {
       if (data.user) await recordLogin(supabase, data.user.id); // Fitur DM
-      // Fitur DI — sama seperti login: pilih mode dulu di /portal.
-      router.push("/portal");
+      // Fitur Onboarding: arahkan pengguna baru ke wizard 2 slide /onboarding
+      router.push("/onboarding");
       router.refresh();
     } else {
       setInfo("Pendaftaran berhasil! Cek email Anda untuk konfirmasi, lalu login.");

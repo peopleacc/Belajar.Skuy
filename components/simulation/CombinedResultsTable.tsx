@@ -183,17 +183,24 @@ export default function CombinedResultsTable({
                       {/* Skor Total */}
                       <td className="whitespace-nowrap px-5 py-4 text-center">
                         {overall != null ? (
-                          <span
-                            className={`inline-block rounded-lg px-2.5 py-1 text-xs font-extrabold ${
-                              overall >= 80
-                                ? "bg-emerald-500/10 text-emerald-600"
-                                : overall >= 60
-                                ? "bg-brand-500/10 text-brand-600"
-                                : "bg-amber-500/10 text-amber-600"
-                            }`}
-                          >
-                            {overall}/100
-                          </span>
+                          <div className="flex flex-col items-center gap-0.5">
+                            <span
+                              className={`inline-block rounded-lg px-2.5 py-1 text-xs font-extrabold ${
+                                overall >= 80
+                                  ? "bg-emerald-500/10 text-emerald-600"
+                                  : overall >= 60
+                                  ? "bg-brand-500/10 text-brand-600"
+                                  : "bg-amber-500/10 text-amber-600"
+                              }`}
+                            >
+                              {overall}/100
+                            </span>
+                            {scores?.speed_score != null && (
+                              <span className="text-[9px] font-semibold text-brand-600 uppercase tracking-tighter">
+                                5 Indikator
+                              </span>
+                            )}
+                          </div>
                         ) : (
                           <span className="text-xs text-slate-400">—</span>
                         )}

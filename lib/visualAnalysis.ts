@@ -1,20 +1,47 @@
-// Fitur BC (planning-update-newfitur) — analisis visual DI BROWSER.
+// Fitur BC & Pembaruan Update 19 — Analisis Visual MURNI CLIENT-SIDE di Browser.
 //
-// MediaPipe (pretrained) memberi KOORDINAT landmark; metrik di bawah murni rumus
-// geometri atas koordinat itu — TANPA model/training/dataset sendiri (keputusan
-// planning). Tidak satu pun frame meninggalkan browser: keluaran modul ini hanya
-// angka agregat per slide + timeline bucket 10 detik.
+// Menerapkan seluruh spesifikasi matematis dari `formula-web.md`:
+// 1. GazeDynamicsEngine: Koordinat iris rongga mata (Eye-Socket Invariant), titik konjugat P_eye,
+//    filter deadzone 0.012, saccade 0.038, refractory debounce 200ms, sliding buffers (3s, 5s, 60s),
+//    klasifikasi (Kecurigaan Membaca Teks, Tidak Fokus, Memperhatikan Audiens, Fokus, Netral).
+// 2. HandKinematicsEngine: Normalisasi lebar bahu s_shoulder, kecepatan instan vt,
+//    ring-buffer 15 frame, rasio jeda diam (pause ratio), rasio keterarahan Rd,
+//    sikap terbuka (spread >= 0.35), bersedekap (crossed arms), tangan di bawah pinggul.
+// 3. Canvas HUD Renderer: Visual kerangka pose tubuh, sendi tangan, dan retikel iris siber.
 //
-// Aset (wasm + model .task) di-self-host dari /public/mediapipe — versi terkunci
-// dengan paket npm, tanpa CDN saat runtime.
+// Zero Server GPU/CPU — 100% privasi di browser klien.
+
+export type GazeClassification = "reading" | "unfocused" | "audience" | "focus" | "neutral";
+export type HandClassification = "natural" | "static" | "flailing" | "crossed" | "below_hip";
 
 export type VisualSlideMetrics = {
+  // ── Indikator 4 & 5 Baru (formula-web.md & planning-update-19.md) ──
+  eyeScore: number; // 10 - 100
+  handScore: number; // 10 - 100
+  gazeFocusPct: number; // 0 - 100
+  gazeAudiencePct: number; // 0 - 100
+  gazeUnfocusedPct: number; // 0 - 100
+  readingSuspicion: boolean;
+  totalEyeShifts: number;
+  handNaturalPct: number; // 0 - 100
+  handStaticPct: number; // 0 - 100
+  handCrossedPct: number; // 0 - 100
+  handBelowHipPct: number; // 0 - 100
+
+  // ── Backward-Compatibility Fields ──
   eyeContactRatio: number | null;
   postureScore: number | null;
   expressionVariety: number | null;
-  gestureRate: number | null; // gerakan tangan per menit
+  gestureRate: number | null; // gerakan per menit
   framesSampled: number;
-  timeline: { t: number; eye: number | null; posture: number | null; gesture: number | null }[];
+  timeline: {
+    t: number;
+    eye: number | null;
+    posture: number | null;
+    gesture: number | null;
+    gazeState?: GazeClassification;
+    handState?: HandClassification;
+  }[];
 };
 
 const WASM_PATH = "/mediapipe/wasm";
@@ -24,10 +51,6 @@ const MODELS = {
   hand: "/mediapipe/models/hand_landmarker.task",
 };
 
-// Ambang "menghadap kamera" — PERKIRAAN dari arah kepala, bukan arah tatapan
-// sungguhan (batas akurasi dinyatakan di planning & UI, jangan diperlakukan pasti).
-const YAW_MAX_DEG = 18;
-const PITCH_MAX_DEG = 15;
 const BUCKET_MS = 10_000;
 
 type Landmarkers = {
@@ -36,17 +59,15 @@ type Landmarkers = {
   hand: import("@mediapipe/tasks-vision").HandLandmarker;
 };
 
-type Bucket = { frames: number; eyeOk: number; postureOk: number; gestureActive: number };
+type Bucket = {
+  frames: number;
+  eyeOk: number;
+  postureOk: number;
+  gestureActive: number;
+  gazeCounts: Record<GazeClassification, number>;
+  handCounts: Record<HandClassification, number>;
+};
 
-// WASM MediaPipe/TFLite (Emscripten) mengeluarkan sebagian log internal lewat
-// console.error meski cuma informasi ("INFO: Created TensorFlow Lite XNNPACK
-// delegate for CPU."), bukan error sungguhan — dan bisa muncul KAPAN SAJA
-// selama siklus hidup modul (load model, inferensi pertama, atau cleanup),
-// jadi difilter SEKALI di level modul (bukan dibungkus sempit di satu titik
-// panggilan) supaya tertangkap di mana pun ia muncul. Next.js dev mode
-// mengubah setiap console.error jadi layar merah penuh, sehingga log yang
-// tidak berbahaya ini terlihat seperti bug. Regex sempit — cuma pola pesan
-// ini persis; error lain tetap tampil normal.
 let benignWasmLogsSuppressed = false;
 function suppressBenignWasmLogs() {
   if (benignWasmLogsSuppressed) return;
@@ -64,27 +85,64 @@ export class VisualAnalyzer {
   private lm: Landmarkers;
   private running = false;
   private timer: ReturnType<typeof setTimeout> | null = null;
-  private intervalMs = 125; // ~8fps awal; adaptif turun di perangkat lemah
+  private intervalMs = 100; // ~10fps
   private detectEma = 0;
 
-  // akumulator per slide
+  // Canvas Overlay Renderer (Opsional untuk Skeleton & HUD)
+  private overlayCanvas: HTMLCanvasElement | null = null;
+  private skeletonEnabled = false;
+
+  // ── Akumulator Slide Berjalan ──
   private frames = 0;
-  private eyeOk = 0;
+  private slideStart = 0;
+  private buckets: Bucket[] = [];
+
+  // ── Gaze Dynamics Engine State ──
+  private prevEyePos: { x: number; y: number } | null = null;
+  private lastShiftTimestamp = 0;
+  private lastMovementTimestamp = 0;
+  private totalShiftCount = 0;
+  private shiftEvents: { timestamp: number; displacement: number }[] = [];
+  private currentGazeState: GazeClassification = "neutral";
+  private isShiftingNow = false;
+
+  private gazeCounts: Record<GazeClassification, number> = {
+    reading: 0,
+    unfocused: 0,
+    audience: 0,
+    focus: 0,
+    neutral: 0,
+  };
+
+  // ── Hand Kinematics Engine State ──
+  private prevPalm: { x: number; y: number } | null = null;
+  private prevTip: { x: number; y: number } | null = null;
+  private handRingBuffer: { vt: number; palm: { x: number; y: number } }[] = [];
+  private currentHandState: HandClassification = "static";
+
+  private handCounts: Record<HandClassification, number> = {
+    natural: 0,
+    static: 0,
+    flailing: 0,
+    crossed: 0,
+    below_hip: 0,
+  };
+
+  // ── Posture & Smile Compatibility State ──
   private poseSeen = 0;
   private postureOk = 0;
   private smileVals: number[] = [];
-  private gestureEvents = 0;
-  private prevWrist: { x: number; y: number } | null = null;
-  private wasMoving = false;
-  private slideStart = 0;
-  private buckets: Bucket[] = [];
+
+  // Landmark caching untuk render frame
+  private lastFaceLandmarks: any = null;
+  private lastPoseLandmarks: any = null;
+  private lastHandLandmarks: any = null;
 
   private constructor(video: HTMLVideoElement, lm: Landmarkers) {
     this.video = video;
     this.lm = lm;
   }
 
-  /** Muat wasm + 3 model (sekali, beberapa detik) — panggil saat menyiapkan sesi. */
   static async create(video: HTMLVideoElement): Promise<VisualAnalyzer> {
     suppressBenignWasmLogs();
     const { FilesetResolver, FaceLandmarker, PoseLandmarker, HandLandmarker } = await import(
@@ -114,6 +172,12 @@ export class VisualAnalyzer {
     return new VisualAnalyzer(video, { face, pose, hand });
   }
 
+  /** Sambungkan canvas overlay dan aktifkan/nonaktifkan kerangka */
+  setOverlay(canvas: HTMLCanvasElement | null, skeletonEnabled: boolean) {
+    this.overlayCanvas = canvas;
+    this.skeletonEnabled = skeletonEnabled;
+  }
+
   start() {
     if (this.running) return;
     this.running = true;
@@ -123,34 +187,87 @@ export class VisualAnalyzer {
 
   startSlide() {
     this.frames = 0;
-    this.eyeOk = 0;
     this.poseSeen = 0;
     this.postureOk = 0;
     this.smileVals = [];
-    this.gestureEvents = 0;
-    this.prevWrist = null;
-    this.wasMoving = false;
     this.slideStart = performance.now();
     this.buckets = [];
+
+    this.prevEyePos = null;
+    this.lastShiftTimestamp = performance.now();
+    this.lastMovementTimestamp = performance.now();
+    this.totalShiftCount = 0;
+    this.shiftEvents = [];
+    this.currentGazeState = "neutral";
+    this.isShiftingNow = false;
+    this.gazeCounts = { reading: 0, unfocused: 0, audience: 0, focus: 0, neutral: 0 };
+
+    this.prevPalm = null;
+    this.prevTip = null;
+    this.handRingBuffer = [];
+    this.currentHandState = "static";
+    this.handCounts = { natural: 0, static: 0, flailing: 0, crossed: 0, below_hip: 0 };
   }
 
-  /** Rangkum metrik slide berjalan lalu reset untuk slide berikutnya. */
+  /**
+   * Rangkum metrik visual slide/segmen berjalan mengacu pada formula-web.md & planning-update-19.md
+   */
   collectSlide(): VisualSlideMetrics {
-    const elapsedMin = (performance.now() - this.slideStart) / 60000;
+    const totalFrames = Math.max(1, this.frames);
+    const elapsedMin = Math.max(0.01, (performance.now() - this.slideStart) / 60000);
+
+    // Rasio Mata
+    const focusRatio = this.gazeCounts.focus / totalFrames;
+    const audienceRatio = this.gazeCounts.audience / totalFrames;
+    const unfocusedRatio = this.gazeCounts.unfocused / totalFrames;
+    const readingSuspicion = this.gazeCounts.reading > 0 || (this.gazeCounts.reading / totalFrames) > 0.4;
+    const penaltyReading = readingSuspicion ? 2.5 : 0;
+
+    // Skor Dinamika Bola Mata (formula-web.md §4.1, skala 1.0 - 10.0 dikali 10)
+    const rawEye = 3.0 + 4.5 * focusRatio + 3.0 * audienceRatio - 4.5 * unfocusedRatio - penaltyReading;
+    const eyeScore = Math.round(Math.min(10.0, Math.max(1.0, rawEye)) * 10);
+
+    // Rasio Tangan
+    const naturalRatio = this.handCounts.natural / totalFrames;
+    const staticRatio = this.handCounts.static / totalFrames;
+    const crossedRatio = this.handCounts.crossed / totalFrames;
+    const belowHipRatio = this.handCounts.below_hip / totalFrames;
+
+    // Skor Dinamika Gestur Tangan (formula-web.md §4.2, skala 1.0 - 10.0 dikali 10)
+    const rawHand = 2.5 + 7.5 * naturalRatio - 3.0 * crossedRatio - 2.0 * belowHipRatio;
+    const handScore = Math.round(Math.min(10.0, Math.max(1.0, rawHand)) * 10);
+
     const metrics: VisualSlideMetrics = {
-      eyeContactRatio: this.frames > 0 ? round2(this.eyeOk / this.frames) : null,
+      eyeScore,
+      handScore,
+      gazeFocusPct: Math.round(focusRatio * 100),
+      gazeAudiencePct: Math.round(audienceRatio * 100),
+      gazeUnfocusedPct: Math.round(unfocusedRatio * 100),
+      readingSuspicion,
+      totalEyeShifts: this.totalShiftCount,
+      handNaturalPct: Math.round(naturalRatio * 100),
+      handStaticPct: Math.round(staticRatio * 100),
+      handCrossedPct: Math.round(crossedRatio * 100),
+      handBelowHipPct: Math.round(belowHipRatio * 100),
+
+      // Kompatibilitas lama
+      eyeContactRatio: round2((this.gazeCounts.focus + this.gazeCounts.audience) / totalFrames),
       postureScore: this.poseSeen > 0 ? round2(this.postureOk / this.poseSeen) : null,
       expressionVariety:
         this.smileVals.length > 3 ? round2(Math.min(1, stddev(this.smileVals) * 2)) : null,
-      gestureRate: elapsedMin > 0.05 ? round2(this.gestureEvents / elapsedMin) : null,
+      gestureRate: round2(this.handCounts.natural / elapsedMin),
       framesSampled: this.frames,
-      timeline: this.buckets.map((b, i) => ({
-        t: i * (BUCKET_MS / 1000),
-        eye: b.frames > 0 ? round2(b.eyeOk / b.frames) : null,
-        posture: b.frames > 0 ? round2(b.postureOk / b.frames) : null,
-        gesture: b.frames > 0 ? round2(b.gestureActive / b.frames) : null,
-      })),
+      timeline: this.buckets.map((b, i) => {
+        const bf = Math.max(1, b.frames);
+        return {
+          t: i * (BUCKET_MS / 1000),
+          eye: round2((b.gazeCounts.focus + b.gazeCounts.audience) / bf),
+          posture: round2(b.postureOk / bf),
+          gesture: round2(b.gestureActive / bf),
+        };
+      }),
     };
+
     this.startSlide();
     return metrics;
   }
@@ -158,9 +275,13 @@ export class VisualAnalyzer {
   stop() {
     this.running = false;
     if (this.timer) clearTimeout(this.timer);
-    this.lm.face.close();
-    this.lm.pose.close();
-    this.lm.hand.close();
+    try {
+      this.lm.face.close();
+      this.lm.pose.close();
+      this.lm.hand.close();
+    } catch {
+      /* ignore cleanup */
+    }
   }
 
   private loop() {
@@ -168,20 +289,29 @@ export class VisualAnalyzer {
     const t0 = performance.now();
     try {
       this.sample(t0);
+      if (this.overlayCanvas) {
+        this.drawOverlay();
+      }
     } catch {
-      /* satu frame gagal → lewati, jangan hentikan sesi */
+      /* skip frame */
     }
     const cost = performance.now() - t0;
-    // Adaptif utk perangkat lemah (DoD BC): EMA biaya deteksi menentukan interval.
     this.detectEma = this.detectEma === 0 ? cost : this.detectEma * 0.8 + cost * 0.2;
-    this.intervalMs = this.detectEma > 180 ? 500 : this.detectEma > 90 ? 250 : 125;
+    this.intervalMs = this.detectEma > 180 ? 300 : this.detectEma > 90 ? 150 : 90;
     this.timer = setTimeout(() => this.loop(), this.intervalMs);
   }
 
   private bucket(): Bucket {
     const i = Math.min(119, Math.floor((performance.now() - this.slideStart) / BUCKET_MS));
     while (this.buckets.length <= i) {
-      this.buckets.push({ frames: 0, eyeOk: 0, postureOk: 0, gestureActive: 0 });
+      this.buckets.push({
+        frames: 0,
+        eyeOk: 0,
+        postureOk: 0,
+        gestureActive: 0,
+        gazeCounts: { reading: 0, unfocused: 0, audience: 0, focus: 0, neutral: 0 },
+        handCounts: { natural: 0, static: 0, flailing: 0, crossed: 0, below_hip: 0 },
+      });
     }
     return this.buckets[i];
   }
@@ -192,57 +322,371 @@ export class VisualAnalyzer {
     this.frames += 1;
     b.frames += 1;
 
-    // --- wajah: arah kepala (proxy kontak mata) + senyum (variasi ekspresi) ---
-    const face = this.lm.face.detectForVideo(this.video, ts);
-    const mat = face.facialTransformationMatrixes?.[0]?.data;
-    if (mat) {
-      // kolom ke-3 matriks rotasi = vektor normal wajah; yaw/pitch dari situ.
-      // Konvensi tanda tak penting — ambang memakai |sudut|.
-      const fx = mat[8], fy = mat[9], fz = Math.abs(mat[10]) || 1e-6;
-      const yaw = Math.abs((Math.atan2(fx, fz) * 180) / Math.PI);
-      const pitch = Math.abs((Math.atan2(fy, fz) * 180) / Math.PI);
-      if (yaw <= YAW_MAX_DEG && pitch <= PITCH_MAX_DEG) {
-        this.eyeOk += 1;
-        b.eyeOk += 1;
+    // ── 1. MediaPipe Vision Tasks Inferences ──
+    const faceResult = this.lm.face.detectForVideo(this.video, ts);
+    const poseResult = this.lm.pose.detectForVideo(this.video, ts);
+    const handResult = this.lm.hand.detectForVideo(this.video, ts);
+
+    this.lastFaceLandmarks = faceResult.faceLandmarks?.[0] ?? null;
+    this.lastPoseLandmarks = poseResult.landmarks?.[0] ?? null;
+    this.lastHandLandmarks = handResult.landmarks ?? null;
+
+    const now = performance.now();
+
+    // ── 2. GAZE DYNAMICS ENGINE (formula-web.md §2) ──
+    const fl = this.lastFaceLandmarks;
+    if (fl && fl[33] && fl[133] && fl[159] && fl[145] && fl[468] && fl[263] && fl[362] && fl[386] && fl[374] && fl[473]) {
+      // Mata Kanan (Right Eye Canthi & Iris 468)
+      const wR = Math.abs(fl[133].x - fl[33].x) || 1e-5;
+      const hR = Math.abs(fl[145].y - fl[159].y) || 1e-5;
+      const relXR = (fl[468].x - fl[33].x) / wR;
+      const relYR = (fl[468].y - fl[159].y) / hR;
+
+      // Mata Kiri (Left Eye Canthi & Iris 473)
+      const wL = Math.abs(fl[263].x - fl[362].x) || 1e-5;
+      const hL = Math.abs(fl[374].y - fl[386].y) || 1e-5;
+      const relXL = (fl[473].x - fl[362].x) / wL;
+      const relYL = (fl[473].y - fl[386].y) / hL;
+
+      // Posisi Konjugat P_eye(t)
+      const currEyePos = {
+        x: (relXR + relXL) / 2,
+        y: (relYR + relYL) / 2,
+      };
+
+      if (this.prevEyePos) {
+        const deltaP = Math.hypot(currEyePos.x - this.prevEyePos.x, currEyePos.y - this.prevEyePos.y);
+        // Filter Deadzone 0.012
+        const deltaPActive = Math.max(0.0, deltaP - 0.012);
+        // Ambang Saccade 0.038
+        this.isShiftingNow = deltaPActive >= 0.038;
+
+        if (this.isShiftingNow) {
+          // Debounce Refractory 200ms
+          if (now - this.lastShiftTimestamp > 200) {
+            this.shiftEvents.push({ timestamp: now, displacement: deltaPActive });
+            this.lastShiftTimestamp = now;
+            this.totalShiftCount += 1;
+            this.lastMovementTimestamp = now;
+          }
+        }
       }
+      this.prevEyePos = currEyePos;
+
+      // Durasi diam tanpa pergeseran aktif
+      const staticDurationSec = (now - this.lastMovementTimestamp) / 1000;
+
+      // Bersihkan riwayat melebihi 60 detik
+      this.shiftEvents = this.shiftEvents.filter((ev) => now - ev.timestamp <= 60000);
+
+      // Window counts: 3s, 5s, 60s
+      const n3s = this.shiftEvents.filter((ev) => now - ev.timestamp <= 3000).length;
+      const n5s = this.shiftEvents.filter((ev) => now - ev.timestamp <= 5000).length;
+      const n60s = this.shiftEvents.length;
+
+      // Pohon Keputusan Klasifikasi (formula-web.md §2.4)
+      if (staticDurationSec >= 300) {
+        this.currentGazeState = "reading"; // Kecurigaan membaca teks
+      } else if (n3s >= 10) {
+        this.currentGazeState = "unfocused"; // Tidak fokus / gerak sangat cepat
+      } else if (n5s >= 5) {
+        this.currentGazeState = "audience"; // Memperhatikan audiens
+      } else if (n60s <= 2) {
+        this.currentGazeState = "focus"; // Fokus tenang
+      } else {
+        this.currentGazeState = "neutral";
+      }
+
+      this.gazeCounts[this.currentGazeState] += 1;
+      b.gazeCounts[this.currentGazeState] += 1;
     }
-    const shapes = face.faceBlendshapes?.[0]?.categories;
+
+    // Variasi Ekspresi (Smile Blendshapes)
+    const shapes = faceResult.faceBlendshapes?.[0]?.categories;
     if (shapes) {
       const smileL = shapes.find((c) => c.categoryName === "mouthSmileLeft")?.score ?? 0;
       const smileR = shapes.find((c) => c.categoryName === "mouthSmileRight")?.score ?? 0;
       this.smileVals.push((smileL + smileR) / 2);
     }
 
-    // --- postur: kemiringan garis bahu + offset kepala dari tengah bahu ---
-    const pose = this.lm.pose.detectForVideo(this.video, ts);
-    const pl = pose.landmarks?.[0];
+    // ── 3. POSTURE EVALUATION & SKELETON (formula-web.md §3.4) ──
+    const pl = this.lastPoseLandmarks;
+    let sShoulder = 0.25; // default fallback
+    let isCrossed = false;
+    let isHandsBelowHip = false;
+    let isOpenSpread = false;
+
     if (pl && pl[11] && pl[12] && pl[0]) {
       this.poseSeen += 1;
       const l = pl[11], r = pl[12], nose = pl[0];
-      const width = Math.abs(l.x - r.x) || 1e-6;
-      const tiltDeg = Math.abs((Math.atan2(Math.abs(l.y - r.y), width) * 180) / Math.PI);
-      const headOff = Math.abs(nose.x - (l.x + r.x) / 2) / width;
+      sShoulder = Math.hypot(l.x - r.x, l.y - r.y) || 0.25;
+
+      const tiltDeg = Math.abs((Math.atan2(Math.abs(l.y - r.y), Math.abs(l.x - r.x) || 1e-5) * 180) / Math.PI);
+      const headOff = Math.abs(nose.x - (l.x + r.x) / 2) / sShoulder;
       if (tiltDeg <= 12 && headOff <= 0.35) {
         this.postureOk += 1;
         b.postureOk += 1;
       }
+
+      // Evaluasi Postur Lengan Bersedekap & Bawah Pinggul
+      if (pl[15] && pl[16] && pl[23] && pl[24]) {
+        const dCrossL = Math.hypot(pl[15].x - r.x, pl[15].y - r.y) / sShoulder;
+        const dCrossR = Math.hypot(pl[16].x - l.x, pl[16].y - l.y) / sShoulder;
+        isCrossed = dCrossL < 0.35 && dCrossR < 0.35;
+
+        const hipY = (pl[23].y + pl[24].y) / 2;
+        isHandsBelowHip = pl[15].y > hipY && pl[16].y > hipY;
+
+        const wristDist = Math.hypot(pl[15].x - pl[16].x, pl[15].y - pl[16].y);
+        isOpenSpread = wristDist / sShoulder >= 0.35;
+      }
     }
 
-    // --- tangan: transisi diam→bergerak dihitung sebagai satu gestur ---
-    const hands = this.lm.hand.detectForVideo(this.video, ts);
-    const wrist = hands.landmarks?.[0]?.[0];
-    if (wrist) {
-      const moving = this.prevWrist
-        ? Math.hypot(wrist.x - this.prevWrist.x, wrist.y - this.prevWrist.y) > 0.025
-        : false;
-      if (moving) b.gestureActive += 1;
-      if (moving && !this.wasMoving) this.gestureEvents += 1;
-      this.wasMoving = moving;
-      this.prevWrist = { x: wrist.x, y: wrist.y };
+    // ── 4. HAND KINEMATICS ENGINE (formula-web.md §3) ──
+    const hl = this.lastHandLandmarks?.[0]; // Tangan pertama
+    if (hl && hl[0] && hl[5] && hl[9] && hl[13] && hl[17]) {
+      // Pusat telapak C_palm
+      const palmX = (hl[0].x + hl[5].x + hl[9].x + hl[13].x + hl[17].x) / 5;
+      const palmY = (hl[0].y + hl[5].y + hl[9].y + hl[13].y + hl[17].y) / 5;
+      const currPalm = { x: palmX, y: palmY };
+
+      const tip = hl[8] ? { x: hl[8].x, y: hl[8].y } : currPalm;
+
+      let vt = 0;
+      if (this.prevPalm && this.prevTip) {
+        const dPalm = Math.hypot(currPalm.x - this.prevPalm.x, currPalm.y - this.prevPalm.y);
+        const dTip = Math.hypot(tip.x - this.prevTip.x, tip.y - this.prevTip.y);
+        vt = Math.max(dPalm, 0.75 * dTip) / sShoulder;
+      }
+      this.prevPalm = currPalm;
+      this.prevTip = tip;
+
+      // Ring buffer 15 frame
+      this.handRingBuffer.push({ vt, palm: currPalm });
+      if (this.handRingBuffer.length > 15) {
+        this.handRingBuffer.shift();
+      }
+
+      // Hitung metrik keterarahan Rd & rasio jeda
+      const vAvg = this.handRingBuffer.reduce((acc, it) => acc + it.vt, 0) / this.handRingBuffer.length;
+      const pFirst = this.handRingBuffer[0].palm;
+      const pLast = this.handRingBuffer[this.handRingBuffer.length - 1].palm;
+      const dNet = Math.hypot(pLast.x - pFirst.x, pLast.y - pFirst.y);
+
+      let dPath = 0;
+      for (let k = 1; k < this.handRingBuffer.length; k++) {
+        dPath += Math.hypot(
+          this.handRingBuffer[k].palm.x - this.handRingBuffer[k - 1].palm.x,
+          this.handRingBuffer[k].palm.y - this.handRingBuffer[k - 1].palm.y
+        );
+      }
+      const rDirect = dNet / (dPath + 1e-6);
+
+      // Klasifikasi Gestur Tangan
+      if (isCrossed) {
+        this.currentHandState = "crossed";
+      } else if (isHandsBelowHip) {
+        this.currentHandState = "below_hip";
+      } else if (vAvg >= 0.010 && vAvg <= 0.050 && rDirect >= 0.60 && isOpenSpread) {
+        this.currentHandState = "natural"; // Sering & Terarah (Prima)
+        b.gestureActive += 1;
+      } else if (vAvg > 0.060 || rDirect < 0.40) {
+        this.currentHandState = "flailing"; // Terlalu agresif / mengibas cepat
+      } else {
+        this.currentHandState = "static"; // Pasif / diam wajar
+      }
+
+      this.handCounts[this.currentHandState] += 1;
+      b.handCounts[this.currentHandState] += 1;
     } else {
-      this.prevWrist = null;
-      this.wasMoving = false;
+      if (isCrossed) {
+        this.currentHandState = "crossed";
+        this.handCounts.crossed += 1;
+        b.handCounts.crossed += 1;
+      } else if (isHandsBelowHip) {
+        this.currentHandState = "below_hip";
+        this.handCounts.below_hip += 1;
+        b.handCounts.below_hip += 1;
+      } else {
+        this.currentHandState = "static";
+        this.handCounts.static += 1;
+        b.handCounts.static += 1;
+      }
     }
+  }
+
+  // ── 5. HUD CANVAS OVERLAY RENDERING (formula-web.md §2.5 & §3) ──
+  private drawOverlay() {
+    const canvas = this.overlayCanvas;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    if (canvas.width !== this.video.videoWidth || canvas.height !== this.video.videoHeight) {
+      if (this.video.videoWidth > 0 && this.video.videoHeight > 0) {
+        canvas.width = this.video.videoWidth;
+        canvas.height = this.video.videoHeight;
+      }
+    }
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    if (!this.skeletonEnabled) return;
+
+    const w = canvas.width;
+    const h = canvas.height;
+
+    // A. Gambar Kerangka Tubuh (Pose Skeleton)
+    const pl = this.lastPoseLandmarks;
+    if (pl) {
+      ctx.lineWidth = 2.5;
+      ctx.strokeStyle = "rgba(6, 182, 212, 0.75)"; // Cyan cyber
+      ctx.fillStyle = "#38bdf8";
+
+      const connections = [
+        [11, 12], // Bahu
+        [11, 13], [13, 15], // Lengan Kiri
+        [12, 14], [14, 16], // Lengan Kanan
+        [11, 23], [12, 24], [23, 24], // Batang Tubuh
+      ];
+
+      for (const [p1, p2] of connections) {
+        if (pl[p1] && pl[p2] && pl[p1].visibility !== undefined && pl[p1].visibility > 0.4) {
+          ctx.beginPath();
+          ctx.moveTo(pl[p1].x * w, pl[p1].y * h);
+          ctx.lineTo(pl[p2].x * w, pl[p2].y * h);
+          ctx.stroke();
+        }
+      }
+
+      // Titik Sendi Tubuh
+      const joints = [11, 12, 13, 14, 15, 16, 23, 24];
+      for (const j of joints) {
+        if (pl[j]) {
+          ctx.beginPath();
+          ctx.arc(pl[j].x * w, pl[j].y * h, 4, 0, 2 * Math.PI);
+          ctx.fill();
+        }
+      }
+    }
+
+    // B. Gambar Sendi Tangan (Hand Skeleton)
+    if (this.lastHandLandmarks) {
+      for (const hand of this.lastHandLandmarks) {
+        ctx.strokeStyle = "rgba(52, 211, 153, 0.8)"; // Hijau emerald
+        ctx.lineWidth = 1.8;
+        ctx.fillStyle = "#34d399";
+
+        // Koneksi Jari
+        const fingerChains = [
+          [0, 1, 2, 3, 4],       // Jempol
+          [0, 5, 6, 7, 8],       // Telunjuk
+          [0, 9, 10, 11, 12],    // Tengah
+          [0, 13, 14, 15, 16],   // Manis
+          [0, 17, 18, 19, 20],   // Kelingking
+        ];
+
+        for (const chain of fingerChains) {
+          ctx.beginPath();
+          ctx.moveTo(hand[chain[0]].x * w, hand[chain[0]].y * h);
+          for (let k = 1; k < chain.length; k++) {
+            ctx.lineTo(hand[chain[k]].x * w, hand[chain[k]].y * h);
+          }
+          ctx.stroke();
+        }
+
+        // Titik Sendi Jari
+        for (const pt of hand) {
+          ctx.beginPath();
+          ctx.arc(pt.x * w, pt.y * h, 2.5, 0, 2 * Math.PI);
+          ctx.fill();
+        }
+      }
+    }
+
+    // C. Gambar Retikel Mata Siber (Iris Crosshair Reticle)
+    const fl = this.lastFaceLandmarks;
+    if (fl && fl[468] && fl[473]) {
+      const irisPoints = [fl[468], fl[473]];
+
+      let reticleColor = "#00f0ff"; // Netral
+      if (this.currentGazeState === "focus") reticleColor = "#00ff96";
+      else if (this.currentGazeState === "audience") reticleColor = "#38bdf8";
+      else if (this.currentGazeState === "unfocused") reticleColor = "#ef4444";
+      else if (this.currentGazeState === "reading") reticleColor = "#c084fc";
+
+      for (const pt of irisPoints) {
+        const ix = pt.x * w;
+        const iy = pt.y * h;
+
+        ctx.strokeStyle = reticleColor;
+        ctx.lineWidth = 1.8;
+
+        // Cincin Luar
+        ctx.beginPath();
+        ctx.arc(ix, iy, 11, 0, 2 * Math.PI);
+        ctx.stroke();
+
+        // Crosshair 4-Sumbu
+        ctx.beginPath();
+        ctx.moveTo(ix - 15, iy);
+        ctx.lineTo(ix - 5, iy);
+        ctx.moveTo(ix + 5, iy);
+        ctx.lineTo(ix + 15, iy);
+        ctx.moveTo(ix, iy - 15);
+        ctx.lineTo(ix, iy - 5);
+        ctx.moveTo(ix, iy + 5);
+        ctx.lineTo(ix, iy + 15);
+        ctx.stroke();
+
+        // Titik Pupil Inti
+        ctx.fillStyle = "#ffffff";
+        ctx.beginPath();
+        ctx.arc(ix, iy, 2, 0, 2 * Math.PI);
+        ctx.fill();
+
+        // Saccade Pulse
+        if (this.isShiftingNow) {
+          ctx.strokeStyle = "rgba(255, 255, 255, 0.6)";
+          ctx.beginPath();
+          ctx.arc(ix, iy, 18, 0, 2 * Math.PI);
+          ctx.stroke();
+        }
+      }
+    }
+
+    // D. Lencana Status Klasifikasi HUD
+    ctx.save();
+    ctx.font = "bold 11px sans-serif";
+    ctx.fillStyle = "rgba(15, 23, 42, 0.75)";
+    ctx.fillRect(10, 10, 180, 48);
+    ctx.strokeStyle = "rgba(255, 255, 255, 0.15)";
+    ctx.strokeRect(10, 10, 180, 48);
+
+    ctx.fillStyle = "#94a3b8";
+    ctx.fillText("MATA:", 18, 28);
+    ctx.fillStyle =
+      this.currentGazeState === "focus"
+        ? "#4ade80"
+        : this.currentGazeState === "audience"
+        ? "#38bdf8"
+        : this.currentGazeState === "unfocused"
+        ? "#f87171"
+        : this.currentGazeState === "reading"
+        ? "#c084fc"
+        : "#38bdf8";
+    ctx.fillText(this.currentGazeState.toUpperCase(), 65, 28);
+
+    ctx.fillStyle = "#94a3b8";
+    ctx.fillText("TANGAN:", 18, 46);
+    ctx.fillStyle =
+      this.currentHandState === "natural"
+        ? "#4ade80"
+        : this.currentHandState === "flailing" || this.currentHandState === "crossed"
+        ? "#f87171"
+        : "#cbd5e1";
+    ctx.fillText(this.currentHandState.toUpperCase(), 75, 46);
+    ctx.restore();
   }
 }
 

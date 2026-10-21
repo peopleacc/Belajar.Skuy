@@ -98,51 +98,117 @@ export default function QuickDetailModal({
           {/* Ringkasan Skor Utama */}
           <div>
             <h3 className="mb-3 text-xs font-bold uppercase tracking-wider text-slate-400">
-              Metrik Penilaian Utama
+              Metrik Penilaian Utama (5 Indikator Terbobot)
             </h3>
-            <div className="grid grid-cols-3 gap-3">
-              <div className={`rounded-xl p-4 text-center ${overallBadgeClass}`}>
-                <p className="text-xs font-semibold">Skor Total</p>
-                <p className="mt-1 text-2xl font-black">{overall ?? "—"}</p>
+            {scores?.speed_score != null || scores?.detail?.speed_score != null ? (
+              <div className="space-y-3">
+                <div className={`rounded-xl p-4 text-center ${overallBadgeClass}`}>
+                  <p className="text-xs font-semibold">Skor Total Komposit</p>
+                  <p className="mt-1 text-3xl font-black">{overall ?? "—"}<span className="text-sm font-normal text-slate-400"> / 100</span></p>
+                </div>
+                <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-center">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Kecepatan Bicara [30%]</p>
+                    <p className="mt-1 text-xl font-extrabold text-slate-800">
+                      {scores.speed_score ?? scores.detail?.speed_score ?? "—"}
+                    </p>
+                    <p className="text-[10px] text-slate-500">
+                      {scores.speed_metrics?.category ?? (scores.detail?.wpm_avg ? `${scores.detail.wpm_avg} WPM` : "Ideal")}
+                    </p>
+                  </div>
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-center">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Kesesuaian AI [30%]</p>
+                    <p className="mt-1 text-xl font-extrabold text-slate-800">
+                      {scores.relevance_score ?? scores.detail?.relevance_score ?? scores.content ?? "—"}
+                    </p>
+                    <p className="text-[10px] text-slate-500">
+                      {scores.relevance_metrics?.category ?? "Cukup Jelas"}
+                    </p>
+                  </div>
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-center">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Pemilihan Kata [20%]</p>
+                    <p className="mt-1 text-xl font-extrabold text-slate-800">
+                      {scores.vocab_score ?? scores.detail?.vocab_score ?? "—"}
+                    </p>
+                    <p className="text-[10px] text-slate-500">
+                      {scores.vocab_metrics?.category ?? "Cukup Baik"}
+                    </p>
+                  </div>
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-center">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Pergerakan Tangan [10%]</p>
+                    <p className="mt-1 text-xl font-extrabold text-slate-800">
+                      {scores.hand_score ?? scores.detail?.hand_score ?? (scores.delivery != null ? Math.round(scores.delivery * 0.9) : "—")}
+                    </p>
+                    <p className="text-[10px] text-slate-500">
+                      {scores.hand_metrics?.category ?? "Dinamis & Terarah"}
+                    </p>
+                  </div>
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-center col-span-2 sm:col-span-1">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Pergerakan Mata [10%]</p>
+                    <p className="mt-1 text-xl font-extrabold text-slate-800">
+                      {scores.eye_score ?? scores.detail?.eye_score ?? (scores.detail?.eye_contact != null ? Math.round(scores.detail.eye_contact * 100) : "—")}
+                    </p>
+                    <p className="text-[10px] text-slate-500">
+                      {scores.eye_metrics?.category ?? "Fokus & Audiens"}
+                    </p>
+                  </div>
+                </div>
               </div>
-              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-center">
-                <p className="text-xs font-semibold text-slate-500">Skor Isi</p>
-                <p className="mt-1 text-2xl font-bold text-slate-800">
-                  {scores?.content ?? "—"}
-                </p>
+            ) : (
+              <div className="grid grid-cols-3 gap-3">
+                <div className={`rounded-xl p-4 text-center ${overallBadgeClass}`}>
+                  <p className="text-xs font-semibold">Skor Total</p>
+                  <p className="mt-1 text-2xl font-black">{overall ?? "—"}</p>
+                </div>
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-center">
+                  <p className="text-xs font-semibold text-slate-500">Skor Isi</p>
+                  <p className="mt-1 text-2xl font-bold text-slate-800">
+                    {scores?.content ?? "—"}
+                  </p>
+                </div>
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-center">
+                  <p className="text-xs font-semibold text-slate-500">Skor Penyampaian</p>
+                  <p className="mt-1 text-2xl font-bold text-slate-800">
+                    {scores?.delivery ?? "—"}
+                  </p>
+                </div>
               </div>
-              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-center">
-                <p className="text-xs font-semibold text-slate-500">Skor Penyampaian</p>
-                <p className="mt-1 text-2xl font-bold text-slate-800">
-                  {scores?.delivery ?? "—"}
-                </p>
-              </div>
-            </div>
+            )}
           </div>
 
           {/* Metrik Suara & Visual */}
           {scores?.detail && (
             <div>
               <h3 className="mb-3 text-xs font-bold uppercase tracking-wider text-slate-400">
-                Detail Penyampaian &amp; Visual
+                Detail Metrik Waktu Nyata
               </h3>
               <div className="grid grid-cols-3 gap-3">
                 <div className="rounded-xl border border-slate-100 bg-surface-2 p-3 text-center">
-                  <p className="text-[11px] font-medium text-slate-500">Tempo Bicara (WPM)</p>
+                  <p className="text-[11px] font-medium text-slate-500">Tempo (WPM / WPS)</p>
                   <p className="mt-0.5 text-base font-bold text-slate-800">
-                    {scores.detail.wpm_avg != null ? `${scores.detail.wpm_avg} wpm` : "—"}
+                    {scores.speed_metrics?.wps != null
+                      ? `${scores.speed_metrics.wps} wps (${scores.speed_metrics.wpm} wpm)`
+                      : scores.detail.wpm_avg != null
+                      ? `${scores.detail.wpm_avg} wpm`
+                      : "—"}
                   </p>
                 </div>
                 <div className="rounded-xl border border-slate-100 bg-surface-2 p-3 text-center">
-                  <p className="text-[11px] font-medium text-slate-500">Kata Pengisi</p>
+                  <p className="text-[11px] font-medium text-slate-500">Kata Monoton / Kasar</p>
                   <p className="mt-0.5 text-base font-bold text-slate-800">
-                    {scores.detail.filler_per_min != null ? `${scores.detail.filler_per_min}/m` : "—"}
+                    {scores.vocab_metrics
+                      ? `${scores.vocab_metrics.monoton_count ?? 0}m / ${scores.vocab_metrics.kasar_count ?? 0}k`
+                      : scores.detail.filler_per_min != null
+                      ? `${scores.detail.filler_per_min}/m pengisi`
+                      : "0"}
                   </p>
                 </div>
                 <div className="rounded-xl border border-slate-100 bg-surface-2 p-3 text-center">
                   <p className="text-[11px] font-medium text-slate-500">Kontak Mata Visual</p>
                   <p className="mt-0.5 text-base font-bold text-slate-800">
-                    {scores.detail.eye_contact != null
+                    {scores.eye_score != null
+                      ? `${scores.eye_score}%`
+                      : scores.detail.eye_contact != null
                       ? `${Math.round(scores.detail.eye_contact * 100)}%`
                       : "—"}
                   </p>

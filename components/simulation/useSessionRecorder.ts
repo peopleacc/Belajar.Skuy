@@ -2,33 +2,40 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { VisualAnalyzer } from "@/lib/visualAnalysis";
+import { SpeechCadenceTracker, type CadenceSnapshot } from "@/lib/speechCadence";
 
 /**
- * Fitur BE — mesin rekam/analisis/unggah yang DIPAKAI BERSAMA presentasi & wawancara.
+ * useSessionRecorder — Mesin rekam/analisis/unggah yang DIPAKAI BERSAMA presentasi & wawancara.
  *
- * Diekstrak dari SessionRunner (Batch 1-2) tanpa mengubah perilakunya: izin sekali di
- * awal, rekam per segmen, cap durasi menahan blob sampai pindah segmen, metrik visual
- * dikumpulkan tepat di batas segmen, unggah paralel. Kalau ini disalin jadi dua versi,
- * perbaikan di satu sisi tidak akan sampai ke sisi lain — persis masalah yang sudah
- * pernah terjadi di project ini (rebalanceQuizTypes vs sanitizeQuizTypes, Fitur T).
+ * Pembaruan Update 19:
+ * 1. Mengintegrasikan SpeechCadenceTracker untuk live streaming Words Per Second (WPS) & WPM.
+ * 2. Mengintegrasikan canvas overlay untuk visual kerangka pose & retikel iris (formula-web.md).
+ * 3. Menyertakan cadenceMetrics bersama visualMetrics pada form data per segmen.
  */
 
 export type RecorderOptions = {
-  /** Batas rekaman per segmen (detik). Presentasi 5 menit, wawancara 3 menit. */
-  maxSegmentSeconds: number;
+  /** Batas rekaman per segmen (detik) — standardisasi 120 detik (2 menit) per slide/pertanyaan. */
+  maxSegmentSeconds?: number;
   wantVisual: boolean;
+  language?: "id" | "en";
 };
 
-export function useSessionRecorder({ maxSegmentSeconds, wantVisual }: RecorderOptions) {
+export function useSessionRecorder({
+  maxSegmentSeconds = 120,
+  wantVisual,
+  language = "id",
+}: RecorderOptions) {
   const [seconds, setSeconds] = useState(0);
   const [noMic, setNoMic] = useState(false);
   const [capped, setCapped] = useState(false);
   const [failedUploads, setFailedUploads] = useState(0);
   const [visualState, setVisualState] = useState<"off" | "on" | "failed">("off");
+  const [cadence, setCadence] = useState<CadenceSnapshot | null>(null);
 
   const micStreamRef = useRef<MediaStream | null>(null);
   const camStreamRef = useRef<MediaStream | null>(null);
   const analyzerRef = useRef<VisualAnalyzer | null>(null);
+  const cadenceTrackerRef = useRef<SpeechCadenceTracker | null>(null);
   const analysisVideoRef = useRef<HTMLVideoElement | null>(null);
 
   const recorderRef = useRef<MediaRecorder | null>(null);
@@ -43,10 +50,20 @@ export function useSessionRecorder({ maxSegmentSeconds, wantVisual }: RecorderOp
     camStreamRef.current?.getTracks().forEach((t) => t.stop());
     analyzerRef.current?.stop();
     analyzerRef.current = null;
+    cadenceTrackerRef.current?.stop();
+    cadenceTrackerRef.current = null;
     if (timerRef.current) clearInterval(timerRef.current);
   }, []);
 
   useEffect(() => releaseMedia, [releaseMedia]);
+
+  /** Sambungkan canvas overlay ke VisualAnalyzer untuk visual skeleton */
+  const setOverlayCanvas = useCallback(
+    (canvas: HTMLCanvasElement | null, skeletonEnabled: boolean) => {
+      analyzerRef.current?.setOverlay(canvas, skeletonEnabled);
+    },
+    []
+  );
 
   /** Minta izin mikrofon & (opsional) kamera + muat model. Gagal ≠ batal. */
   const prepareMedia = useCallback(
@@ -68,15 +85,13 @@ export function useSessionRecorder({ maxSegmentSeconds, wantVisual }: RecorderOp
           camStreamRef.current = await navigator.mediaDevices.getUserMedia({
             video: { width: 640, height: 480 },
           });
-          // Video analisis DI LUAR React tree — elemen JSX ke-remount saat ganti
-          // fase dan itu melepas stream dari analyzer (bug nyata di Batch 2).
           const v = document.createElement("video");
           v.muted = true;
           v.playsInline = true;
           v.srcObject = camStreamRef.current;
           await v.play();
           analysisVideoRef.current = v;
-          onProgress?.("Memuat model analisis (sekali, beberapa detik)…");
+          onProgress?.("Memuat model analisis kecerdasan gerak (MediaPipe)…");
           analyzerRef.current = await VisualAnalyzer.create(v);
           visualOk = true;
         } catch {
@@ -100,8 +115,6 @@ export function useSessionRecorder({ maxSegmentSeconds, wantVisual }: RecorderOp
     timerRef.current = setInterval(() => {
       setSeconds((s) => {
         if (s + 1 >= maxSegmentSeconds) {
-          // Batas tercapai: rekaman dihentikan & DITAHAN (bukan diunggah), supaya
-          // unggahannya tetap satu kali bersama metrik visual saat pindah segmen.
           void haltRecorder().then((held) => {
             pendingRef.current = held;
           });
@@ -114,20 +127,30 @@ export function useSessionRecorder({ maxSegmentSeconds, wantVisual }: RecorderOp
     }, 1000);
 
     const stream = micStreamRef.current;
-    if (!stream) return; // tanpa mic: hanya timer yang berjalan
-    const mime = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
-      ? "audio/webm;codecs=opus"
-      : "audio/webm";
-    const rec = new MediaRecorder(stream, { mimeType: mime });
-    chunksRef.current = [];
-    rec.ondataavailable = (e) => {
-      if (e.data.size > 0) chunksRef.current.push(e.data);
-    };
-    recorderRef.current = rec;
-    rec.start();
+    if (stream) {
+      const mime = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
+        ? "audio/webm;codecs=opus"
+        : "audio/webm";
+      const rec = new MediaRecorder(stream, { mimeType: mime });
+      chunksRef.current = [];
+      rec.ondataavailable = (e) => {
+        if (e.data.size > 0) chunksRef.current.push(e.data);
+      };
+      recorderRef.current = rec;
+      rec.start();
+    }
+
+    // Inisialisasi & jalankan tracker cadence realtime
+    if (!cadenceTrackerRef.current) {
+      cadenceTrackerRef.current = new SpeechCadenceTracker(language);
+      cadenceTrackerRef.current.setCallback(setCadence);
+    }
+    cadenceTrackerRef.current.start();
+
+    // Jalankan analyzer visual
     analyzerRef.current?.start();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [maxSegmentSeconds]);
+  }, [maxSegmentSeconds, language]);
 
   function haltRecorder(): Promise<{ blob: Blob | null; durationMs: number }> {
     if (pendingRef.current) {
@@ -152,37 +175,42 @@ export function useSessionRecorder({ maxSegmentSeconds, wantVisual }: RecorderOp
   }
 
   /**
-   * Tutup segmen aktif: ambil metrik visual + antrikan unggahan (paralel).
-   * `slideImage` (Fitur DB) — base64 gambar halaman PDF slide ini, opsional (cuma
-   * presentasi yang punya; wawancara tidak mengirimnya sama sekali).
+   * Tutup segmen aktif: ambil metrik visual + cadence + antrikan unggahan (paralel).
    */
-  const closeSegment = useCallback((sessionId: string, index: number, slideImage?: string | null) => {
-    // collectSlide() JUGA me-reset akumulator — wajib dipanggil tepat di batas segmen.
-    const visual = analyzerRef.current?.collectSlide() ?? null;
-    uploadsRef.current.push(
-      haltRecorder().then(async ({ blob, durationMs }) => {
-        const form = new FormData();
-        form.append("sessionId", sessionId);
-        form.append("index", String(index));
-        form.append("durationMs", String(durationMs));
-        if (blob && blob.size > 0) form.append("audio", blob, "segmen.webm");
-        if (visual) form.append("visualMetrics", JSON.stringify(visual));
-        if (slideImage) form.append("slideImage", slideImage);
-        try {
-          const res = await fetch("/api/simulation/segment", { method: "POST", body: form });
-          if (!res.ok) setFailedUploads((n) => n + 1);
-        } catch {
-          setFailedUploads((n) => n + 1);
-        }
-      })
-    );
-  }, []);
+  const closeSegment = useCallback(
+    (sessionId: string, index: number, slideImage?: string | null) => {
+      const visual = analyzerRef.current?.collectSlide() ?? null;
+      const cadenceSummary = cadenceTrackerRef.current?.collectSlideCadence() ?? null;
+
+      uploadsRef.current.push(
+        haltRecorder().then(async ({ blob, durationMs }) => {
+          const form = new FormData();
+          form.append("sessionId", sessionId);
+          form.append("index", String(index));
+          form.append("durationMs", String(durationMs));
+          if (blob && blob.size > 0) form.append("audio", blob, "segmen.webm");
+          if (visual) form.append("visualMetrics", JSON.stringify(visual));
+          if (cadenceSummary) form.append("cadenceMetrics", JSON.stringify(cadenceSummary));
+          if (slideImage) form.append("slideImage", slideImage);
+          try {
+            const res = await fetch("/api/simulation/segment", { method: "POST", body: form });
+            if (!res.ok) setFailedUploads((n) => n + 1);
+          } catch {
+            setFailedUploads((n) => n + 1);
+          }
+        })
+      );
+    },
+    []
+  );
 
   /** Tunggu semua unggahan selesai lalu lepas kamera/mikrofon. */
   const finalize = useCallback(async () => {
     if (timerRef.current) clearInterval(timerRef.current);
     analyzerRef.current?.stop();
     analyzerRef.current = null;
+    cadenceTrackerRef.current?.stop();
+    cadenceTrackerRef.current = null;
     micStreamRef.current?.getTracks().forEach((t) => t.stop());
     camStreamRef.current?.getTracks().forEach((t) => t.stop());
     await Promise.allSettled(uploadsRef.current);
@@ -199,8 +227,10 @@ export function useSessionRecorder({ maxSegmentSeconds, wantVisual }: RecorderOp
     capped,
     failedUploads,
     visualState,
+    cadence,
     camStreamRef,
     micStreamRef,
+    setOverlayCanvas,
     prepareMedia,
     beginSegment,
     closeSegment,

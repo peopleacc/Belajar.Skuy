@@ -3,18 +3,12 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 
-const MAX_SECONDS = 120; // Fitur R — batas 2 menit/soal (file kecil, transkripsi cepat)
+const MAX_SECONDS = 120; // 2 menit/soal
+const MAX_ATTEMPTS = 3;  // Maksimal 3 kali rekam suara per soal
+const MAX_CHARS = 400;   // Batasan panjang karakter esai ringkas
 
 type RecState = "idle" | "recording" | "transcribing" | "unsupported" | "denied";
 
-/**
- * Fitur R — jawab soal esai dengan rekam suara. Transkrip ditaruh ke `value` (via `onChange`)
- * dan BISA DIEDIT sebelum submit (STT tidak sempurna). Rekaman audio TIDAK PERNAH disimpan —
- * begitu transkrip balik dari server, blob-nya dibuang.
- *
- * Fallback WAJIB: browser tak dukung MediaRecorder / bukan secure context / izin mikrofon
- * ditolak → turun jadi textarea polos, supaya soal tetap bisa dijawab (tidak pernah buntu).
- */
 export default function VoiceAnswer({
   value,
   onChange,
@@ -24,19 +18,17 @@ export default function VoiceAnswer({
   value: string;
   onChange: (text: string) => void;
   disabled?: boolean;
-  /**
-   * Fitur CD — paket user belum mencakup latihan suara. Ini SEMATA tampilan;
-   * penolakan sesungguhnya ada di Express (`assertFeature`), karena endpoint
-   * transkripsi bisa dipanggil langsung tanpa lewat tombol ini.
-   */
   locked?: boolean;
 }) {
   const [state, setState] = useState<RecState>("idle");
   const [seconds, setSeconds] = useState(0);
+  const [attemptsUsed, setAttemptsUsed] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const attemptsLeft = Math.max(0, MAX_ATTEMPTS - attemptsUsed);
 
   useEffect(() => {
     const supported =
@@ -58,6 +50,7 @@ export default function VoiceAnswer({
   }
 
   async function startRecording() {
+    if (attemptsLeft <= 0) return;
     setError(null);
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -109,7 +102,18 @@ export default function VoiceAnswer({
         setState("idle");
         return;
       }
-      onChange(data.text ?? "");
+
+      // Ambil teks & potong aman maksimal 400 karakter
+      const rawText = (data.text ?? "").trim();
+      const cleanText = rawText.slice(0, MAX_CHARS);
+      onChange(cleanText);
+
+      setAttemptsUsed((prev) => prev + 1);
+
+      if (rawText.length > MAX_CHARS) {
+        setError("Catatan: Hasil transkrip dipotong maksimal 400 karakter agar esai tetap padat.");
+      }
+
       setState("idle");
     } catch {
       setError("Tidak bisa terhubung ke server. Coba rekam ulang atau ketik jawabanmu.");
@@ -120,9 +124,6 @@ export default function VoiceAnswer({
   const mm = String(Math.floor(seconds / 60)).padStart(2, "0");
   const ss = String(seconds % 60).padStart(2, "0");
 
-  // Fitur CD — paket belum mencakup latihan suara. Tombolnya dikunci, TAPI soal
-  // tetap bisa dijawab lewat teks: mengunci fitur tambahan tidak boleh membuat
-  // user gagal mengerjakan kuisnya sama sekali.
   if (locked) {
     return (
       <div>
@@ -131,100 +132,144 @@ export default function VoiceAnswer({
             <i className="bi bi-lock-fill"></i>
             Jawab dengan suara tersedia di paket berbayar
           </span>
-          <Link
-            href="/pricing"
-            className="shrink-0 rounded-xl bg-brand-500 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-brand-600"
-          >
-            Lihat paket
+          <Link href="/pricing" className="text-xs font-bold text-accent hover:underline">
+            Lihat paket →
           </Link>
         </div>
         <textarea
           value={value}
-          onChange={(e) => onChange(e.target.value)}
-          rows={6}
+          onChange={(e) => onChange(e.target.value.slice(0, MAX_CHARS))}
+          maxLength={MAX_CHARS}
+          rows={5}
           disabled={disabled}
-          placeholder="Tulis jawabanmu di sini..."
-          className="w-full resize-none rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none transition focus:border-brand-400 focus:bg-white focus:ring-2 focus:ring-brand-100 disabled:opacity-60"
+          placeholder="Ketik jawabanmu di sini (atau upgrade untuk rekam suara)..."
+          className="w-full resize-none rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none transition focus:border-brand-400 focus:bg-white focus:ring-2 focus:ring-brand-100 disabled:opacity-50"
         />
-      </div>
-    );
-  }
-
-  // Fallback total: browser tak dukung / izin ditolak → textarea polos, soal tetap bisa dijawab
-  if (state === "unsupported" || state === "denied") {
-    return (
-      <div>
-        <p className="mb-2 rounded-lg bg-slate-50 px-3 py-2 text-[11px] text-slate-500">
-          {state === "denied"
-            ? "🎙️ Izin mikrofon ditolak — tidak apa-apa, ketik saja jawabanmu."
-            : "🎙️ Rekam suara tidak didukung di browser ini — ketik saja jawabanmu."}
-        </p>
-        <textarea
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          rows={6}
-          disabled={disabled}
-          placeholder="Tulis jawabanmu di sini..."
-          className="w-full resize-none rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none transition focus:border-brand-400 focus:bg-white focus:ring-2 focus:ring-brand-100 disabled:opacity-60"
-        />
+        <div className="mt-1 flex items-center justify-between text-[11px] text-slate-400">
+          <span>Maksimal {MAX_CHARS} karakter</span>
+          <span className={`font-mono font-bold ${value.length >= MAX_CHARS ? "text-rose-600" : value.length >= 350 ? "text-amber-600" : "text-slate-400"}`}>
+            {value.length} / {MAX_CHARS}
+          </span>
+        </div>
       </div>
     );
   }
 
   return (
-    <div>
-      {state === "recording" ? (
-        <div className="flex items-center justify-between rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3">
-          <span className="flex items-center gap-2 text-sm font-semibold text-rose-600">
-            <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-rose-500" />
-            Merekam… {mm}:{ss}
-          </span>
-          <button
-            type="button"
-            onClick={stopRecording}
-            className="rounded-xl bg-rose-500 px-4 py-2 text-xs font-semibold text-white transition hover:bg-rose-600"
-          >
-            ⏹ Selesai
-          </button>
-        </div>
-      ) : state === "transcribing" ? (
-        <div className="flex items-center gap-2 rounded-2xl border border-brand-200 bg-brand-50 px-4 py-3 text-sm font-semibold text-brand-700">
-          <span className="h-2.5 w-2.5 animate-ping rounded-full bg-brand-500" />
-          Mentranskrip rekaman…
-        </div>
-      ) : (
-        <button
-          type="button"
-          onClick={startRecording}
-          disabled={disabled}
-          className="flex w-full items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-brand-200 bg-brand-50/50 px-4 py-4 text-sm font-semibold text-brand-600 transition hover:bg-brand-50 disabled:opacity-50"
-        >
-          🎙️ {value ? "Rekam Ulang" : "Mulai Rekam"}
-        </button>
-      )}
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center gap-3">
+        {state === "idle" && (
+          <>
+            {attemptsLeft > 0 ? (
+              <div className="flex flex-wrap items-center gap-2.5">
+                <button
+                  type="button"
+                  onClick={startRecording}
+                  disabled={disabled}
+                  className="inline-flex items-center gap-2 rounded-xl bg-accent px-4 py-2.5 text-xs font-semibold text-white shadow-md shadow-brand-500/20 transition hover:bg-brand-600 disabled:opacity-50"
+                >
+                  <i className="bi bi-mic-fill"></i>
+                  {value ? "Rekam Ulang Jawaban" : "Mulai Rekam Jawaban"}
+                </button>
+                <span
+                  className={`rounded-lg px-2.5 py-1 text-[11px] font-bold border ${
+                    attemptsLeft === 3
+                      ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                      : attemptsLeft === 2
+                      ? "bg-amber-50 text-amber-700 border-amber-200"
+                      : "bg-rose-50 text-rose-700 border-rose-200"
+                  }`}
+                >
+                  {attemptsLeft}x kesempatan rekam tersisa
+                </span>
+              </div>
+            ) : (
+              <div className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-slate-100 px-3.5 py-2 text-xs font-semibold text-slate-500">
+                <i className="bi bi-slash-circle text-slate-400" />
+                <span>Batas 3x rekam suara telah tercapai</span>
+              </div>
+            )}
+          </>
+        )}
 
-      {value && state === "idle" && (
-        <div className="mt-3">
-          <p className="mb-1 text-[11px] font-semibold text-slate-400">
-            Transkrip (bisa diedit sebelum submit):
+        {state === "recording" && (
+          <div className="inline-flex items-center gap-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-2">
+            <span className="flex h-2.5 w-2.5 items-center justify-center">
+              <span className="h-2.5 w-2.5 animate-ping rounded-full bg-rose-500" />
+            </span>
+            <span className="font-mono text-xs font-bold text-rose-600">
+              {mm}:{ss}
+            </span>
+            <span className="text-[11px] text-rose-500">maks 2 menit</span>
+            <button
+              type="button"
+              onClick={stopRecording}
+              className="ml-2 rounded-lg bg-rose-500 px-3 py-1 text-xs font-semibold text-white transition hover:bg-rose-600"
+            >
+              Selesai Rekam
+            </button>
+          </div>
+        )}
+
+        {state === "transcribing" && (
+          <div className="inline-flex items-center gap-2 text-xs font-semibold text-slate-500">
+            <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-brand-500 border-t-transparent" />
+            Mentranskrip rekaman...
+          </div>
+        )}
+
+        {state === "denied" && (
+          <p className="text-xs text-rose-600">
+            Izin mikrofon ditolak. Buka izin mikrofon di browser atau ketik jawabanmu di bawah.
           </p>
-          <textarea
-            value={value}
-            onChange={(e) => onChange(e.target.value)}
-            rows={5}
-            disabled={disabled}
-            className="w-full resize-none rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none transition focus:border-brand-400 focus:bg-white focus:ring-2 focus:ring-brand-100 disabled:opacity-60"
-          />
+        )}
+        {state === "unsupported" && (
+          <p className="text-xs text-slate-400">
+            Browser ini tidak mendukung perekaman audio. Ketik jawabanmu langsung di bawah.
+          </p>
+        )}
+      </div>
+
+      {attemptsLeft === 0 && (
+        <p className="text-[11px] text-slate-500 italic">
+          Kamu telah menggunakan kuota 3x rekam suara untuk soal ini. Kamu masih bisa mengedit teks jawabanmu secara manual di bawah sebelum mengirimkan kuis.
+        </p>
+      )}
+
+      {error && <p className="text-xs text-rose-600">{error}</p>}
+
+      <div>
+        <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-slate-400">
+          Transkrip Jawaban (Bisa Diedit Manual Sebelum Submit)
+        </label>
+        <textarea
+          value={value}
+          onChange={(e) => onChange(e.target.value.slice(0, MAX_CHARS))}
+          maxLength={MAX_CHARS}
+          rows={5}
+          disabled={disabled || state === "recording" || state === "transcribing"}
+          placeholder={
+            state === "transcribing"
+              ? "Sedang memproses suara..."
+              : "Hasil transkrip rekamanmu akan muncul di sini (maks 400 karakter). Kamu bisa mengoreksi kalimatnya sebelum dikirim."
+          }
+          className="w-full resize-none rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none transition focus:border-brand-400 focus:bg-white focus:ring-2 focus:ring-brand-100 disabled:opacity-50"
+        />
+        <div className="mt-1 flex items-center justify-between text-[11px]">
+          <span className="text-slate-400">Maksimal {MAX_CHARS} karakter</span>
+          <span
+            className={`font-mono font-bold ${
+              value.length >= MAX_CHARS
+                ? "text-rose-600"
+                : value.length >= 350
+                ? "text-amber-600"
+                : "text-slate-400"
+            }`}
+          >
+            {value.length} / {MAX_CHARS}
+          </span>
         </div>
-      )}
-
-      <p className="mt-1.5 text-[10px] text-slate-400">
-        🔒 Rekamanmu tidak disimpan — hanya teks hasil transkripsinya.
-      </p>
-
-      {error && (
-        <p className="mt-2 rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-600">{error}</p>
-      )}
+      </div>
     </div>
   );
 }

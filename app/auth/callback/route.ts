@@ -27,7 +27,18 @@ export async function GET(request: Request) {
     const supabase = await createClient();
     const { data, error } = await supabase.auth.exchangeCodeForSession(code);
     if (!error) {
-      if (data.user) await recordLogin(supabase, data.user.id); // Fitur DM
+      if (data.user) {
+        await recordLogin(supabase, data.user.id); // Fitur DM
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("onboarding_completed")
+          .eq("id", data.user.id)
+          .single();
+
+        if (profile && profile.onboarding_completed === false) {
+          return NextResponse.redirect(`${baseUrl}/onboarding`);
+        }
+      }
       return NextResponse.redirect(`${baseUrl}${safeNext}`);
     } else {
       console.error("Auth callback exchangeCodeForSession failed:", error.message);

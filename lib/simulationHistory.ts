@@ -26,12 +26,43 @@ export type SessionScores = {
   overall: number | null;
   content: number | null;
   delivery: number | null;
+  speed_score?: number | null;
+  relevance_score?: number | null;
+  vocab_score?: number | null;
+  hand_score?: number | null;
+  eye_score?: number | null;
+  speed_metrics?: {
+    wps?: number | null;
+    wpm?: number | null;
+    category?: string | null;
+    total_words?: number | null;
+    duration_sec?: number | null;
+  } | null;
+  relevance_metrics?: {
+    category?: string | null;
+    match_score?: number | null;
+  } | null;
+  vocab_metrics?: {
+    monoton_count?: number | null;
+    kasar_count?: number | null;
+    tidak_baku_count?: number | null;
+    category?: string | null;
+  } | null;
+  hand_metrics?: {
+    score?: number | null;
+    category?: string | null;
+  } | null;
+  eye_metrics?: {
+    score?: number | null;
+    category?: string | null;
+  } | null;
   detail?: {
     total_ms?: number | null;
     wpm_avg?: number | null;
     filler_per_min?: number | null;
     eye_contact?: number | null;
     posture?: number | null;
+    [key: string]: any;
   } | null;
 } | null;
 

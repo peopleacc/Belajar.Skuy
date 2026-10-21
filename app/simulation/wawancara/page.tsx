@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import WawancaraRunner from "@/components/simulation/WawancaraRunner";
 import SessionHistorySection from "@/components/simulation/SessionHistorySection";
 import { getSessionUser } from "@/lib/session";
+import { getUserLimits } from "@/lib/plans";
 
 export const metadata: Metadata = {
   title: "Simulasi Wawancara — belajar.skuy",
@@ -13,9 +14,14 @@ export default async function WawancaraPage() {
   const user = await getSessionUser();
   if (!user) redirect("/login");
 
+  const limits = await getUserLimits(user.planCode ?? "free");
+
   return (
     <main className="mx-auto max-w-6xl p-8">
-      <WawancaraRunner historySlot={<SessionHistorySection kind="wawancara" />} />
+      <WawancaraRunner
+        skeletonAllowed={limits.cameraSkeleton}
+        historySlot={<SessionHistorySection kind="wawancara" />}
+      />
     </main>
   );
 }

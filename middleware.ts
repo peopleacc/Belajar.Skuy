@@ -45,8 +45,8 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(callbackUrl);
   }
 
-  // Rute yang wajib login (Fitur BG menambah /portal & /simulation, Fitur EF menambah /profile)
-  const PRIVATE = ["/dashboard", "/portal", "/simulation", "/profile"];
+  // Rute yang wajib login (Fitur BG menambah /portal & /simulation, Fitur EF menambah /profile, Fitur Onboarding menambah /onboarding)
+  const PRIVATE = ["/dashboard", "/portal", "/simulation", "/profile", "/onboarding"];
   if (!user && PRIVATE.some((p) => path.startsWith(p))) {
     return NextResponse.redirect(new URL("/login", request.url));
   }
@@ -98,5 +98,6 @@ export const config = {
     "/simulation/:path*",
     "/dashboard/:path*",
     "/profile",
+    "/onboarding",
   ],
 };

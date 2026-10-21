@@ -349,7 +349,7 @@ export function QuizTypeFields({
         <TypeRow
           label="Esai dengan Suara"
           icon="bi-mic-fill"
-          description="Menjawab langsung dengan berbicara. Dinilai artikulasi dan kelengkapan konsep."
+          description="Menjawab langsung dengan berbicara (maks 3x rekam, maks 400 karakter). Dinilai artikulasi dan kelengkapan konsep."
           checked={!voiceLocked && enabled.voice}
           count={voiceLocked ? 0 : value.voice}
           max={activeCount > 1 ? specialMax : undefined}

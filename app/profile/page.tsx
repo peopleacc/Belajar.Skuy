@@ -33,7 +33,7 @@ export default async function ProfilePage() {
   const [{ data: profile }, subDetails] = await Promise.all([
     supabase
       .from("profiles")
-      .select("username, full_name, avatar_url")
+      .select("username, full_name, avatar_url, tanggal_lahir, pendidikan_saat_ini, jurusan, institusi, level_bicara, tujuan_user")
       .eq("id", user.id)
       .single(),
     getUserSubscriptionDetails(user.id),
@@ -51,7 +51,7 @@ export default async function ProfilePage() {
             </Link>
           </p>
           <h1 className="text-2xl font-bold tracking-tight">Edit Profil</h1>
-          <p className="mt-1 text-sm text-slate-500">Perbarui nama, username, dan avatarmu.</p>
+          <p className="mt-1 text-sm text-slate-500">Perbarui identitas, informasi akademik, dan preferensi belajarmu.</p>
 
           <div className="mt-6">
             <EditProfileForm
@@ -59,6 +59,12 @@ export default async function ProfilePage() {
               initialFullName={profile?.full_name ?? ""}
               initialUsername={profile?.username ?? ""}
               initialAvatarUrl={profile?.avatar_url ?? ""}
+              initialTanggalLahir={profile?.tanggal_lahir ?? ""}
+              initialPendidikan={profile?.pendidikan_saat_ini ?? ""}
+              initialJurusan={profile?.jurusan ?? ""}
+              initialInstitusi={profile?.institusi ?? ""}
+              initialLevelBicara={profile?.level_bicara ?? "pemula"}
+              initialTujuanUser={profile?.tujuan_user ?? "keduanya"}
             />
           </div>
         </div>
