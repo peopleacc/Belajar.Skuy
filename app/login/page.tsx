@@ -23,13 +23,48 @@ function LoginForm() {
   const searchParams = useSearchParams();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const rawError = searchParams.get("error");
   const [error, setError] = useState<string | null>(
-    searchParams.get("error") ? "Login gagal, silakan coba lagi." : null
+    rawError === "account_not_found"
+      ? null
+      : rawError
+      ? "Login gagal, silakan coba lagi."
+      : null
   );
   const [loading, setLoading] = useState(false);
+  const [lockoutSeconds, setLockoutSeconds] = useState<number>(0);
 
   // Target redirect default adalah /portal
   const nextTarget = searchParams.get("next") || "/portal";
+
+  // Periksa sisa waktu lockout dari sessionStorage saat mount
+  useEffect(() => {
+    try {
+      const lockUntil = Number(sessionStorage.getItem("auth_login_lockout") || "0");
+      const remaining = Math.ceil((lockUntil - Date.now()) / 1000);
+      if (remaining > 0) {
+        setLockoutSeconds(remaining);
+      }
+    } catch {}
+  }, []);
+
+  // Timer countdown untuk lockout anti brute-force
+  useEffect(() => {
+    if (lockoutSeconds <= 0) return;
+    const interval = setInterval(() => {
+      setLockoutSeconds((prev) => {
+        if (prev <= 1) {
+          try {
+            sessionStorage.removeItem("auth_login_lockout");
+            sessionStorage.removeItem("auth_login_fails");
+          } catch {}
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [lockoutSeconds]);
 
   // Tangani redirect otomatis jika sesi sudah aktif (misal setelah OAuth Google kembali)
   useEffect(() => {
@@ -57,38 +92,82 @@ function LoginForm() {
 
   async function signInWithEmail(e: React.FormEvent) {
     e.preventDefault();
-    if (!supabaseConfigured) return;
+    if (!supabaseConfigured || loading || lockoutSeconds > 0) return;
+
+    const cleanEmail = email.trim().toLowerCase();
+    if (!cleanEmail || !password) {
+      setError("Silakan masukkan email dan password Anda.");
+      return;
+    }
+
     setLoading(true);
     setError(null);
     const supabase = createClient();
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email: cleanEmail,
+      password,
+    });
+
     if (error) {
-      setError(error.message);
+      let fails = 0;
+      try {
+        fails = Number(sessionStorage.getItem("auth_login_fails") || "0") + 1;
+        sessionStorage.setItem("auth_login_fails", String(fails));
+      } catch {}
+
+      // Jika gagal 5 kali berturut-turut, kunci 60 detik
+      if (fails >= 5) {
+        const lockUntil = Date.now() + 60000;
+        try {
+          sessionStorage.setItem("auth_login_lockout", String(lockUntil));
+        } catch {}
+        setLockoutSeconds(60);
+        setError("Terlalu banyak percobaan gagal. Akun dikunci sementara selama 60 detik.");
+      } else {
+        const remainingAttempts = 5 - fails;
+        if (error.message.includes("Invalid login credentials")) {
+          setError(
+            `Email atau password salah. (Sisa ${remainingAttempts}x percobaan sebelum terkunci)`
+          );
+        } else if (error.status === 429 || /rate|limit/i.test(error.message)) {
+          setError("Terlalu banyak permintaan ke server. Silakan tunggu beberapa saat.");
+        } else {
+          setError(error.message);
+        }
+      }
+
       setLoading(false);
       return;
     }
-    if (data.user) await recordLogin(supabase, data.user.id); // Fitur DM
-    // Fitur DI — mendarat di /portal, bukan /dashboard: sekarang ada DUA mode
-    // (course & simulasi), jadi user memilih dulu, tidak diasumsikan.
+
+    // Reset counter gagal saat login berhasil
+    try {
+      sessionStorage.removeItem("auth_login_fails");
+      sessionStorage.removeItem("auth_login_lockout");
+    } catch {}
+
+    if (data.user) await recordLogin(supabase, data.user.id);
     router.push(nextTarget);
     router.refresh();
   }
 
   async function signInWithGoogle() {
-    if (!supabaseConfigured) return;
+    if (!supabaseConfigured || loading || lockoutSeconds > 0) return;
     const supabase = createClient();
-    // Arahkan callback ke /auth/callback dengan next=/portal eksplisit
     const origin = getAppUrl();
-    const redirectUrl = `${origin}/auth/callback?next=${encodeURIComponent(nextTarget)}`;
+    // Sematkan parameter flow=signin untuk memastikan hanya akun terdaftar yang bisa masuk
+    const redirectUrl = `${origin}/auth/callback?flow=signin&next=${encodeURIComponent(nextTarget)}`;
     await supabase.auth.signInWithOAuth({
       provider: "google",
       options: { redirectTo: redirectUrl },
     });
   }
 
+  const isAccountNotFound = rawError === "account_not_found";
+
   return (
     <div className="w-full max-w-sm">
-      {/* Backlink ke Landing Page (Poin 5) */}
+      {/* Backlink ke Landing Page */}
       <Link
         href="/"
         className="mb-6 inline-flex items-center gap-2 text-xs font-medium text-slate-500 transition hover:text-brand-500"
@@ -102,6 +181,44 @@ function LoginForm() {
         Masuk untuk melanjutkan perjalanan belajarmu.
       </p>
 
+      {/* Banner Khusus: Akun Google Belum Terdaftar */}
+      {isAccountNotFound && (
+        <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-xs text-amber-900 shadow-sm animate-in fade-in duration-300">
+          <div className="flex items-center gap-2 font-bold text-amber-800">
+            <span className="text-base">⚠️</span>
+            <span>Akun Google Belum Terdaftar</span>
+          </div>
+          <p className="mt-1.5 text-slate-600 leading-relaxed">
+            Akun Google yang Anda pilih belum terdaftar di <strong>belajar.skuy</strong>. Silakan lakukan pendaftaran terlebih dahulu.
+          </p>
+          <div className="mt-3">
+            <Link
+              href="/register"
+              className="inline-flex items-center gap-1.5 rounded-lg bg-brand-500 px-3 py-1.5 font-semibold text-white shadow-sm transition hover:bg-brand-600 active:scale-95"
+            >
+              Daftar Akun Baru Sekarang →
+            </Link>
+          </div>
+        </div>
+      )}
+
+      {/* Banner Lockout Brute-Force */}
+      {lockoutSeconds > 0 && (
+        <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 p-3.5 text-xs text-rose-800 shadow-sm">
+          <p className="font-bold flex items-center gap-1.5">
+            <span>⏳</span> Formulir Terkunci Sementara
+          </p>
+          <p className="mt-1">
+            Terlalu banyak percobaan gagal. Silakan tunggu{" "}
+            <span className="font-mono font-bold text-rose-900">
+              {String(Math.floor(lockoutSeconds / 60)).padStart(2, "0")}:
+              {String(lockoutSeconds % 60).padStart(2, "0")}
+            </span>{" "}
+            sebelum mencoba kembali.
+          </p>
+        </div>
+      )}
+
       {!supabaseConfigured && (
         <div className="mt-4 rounded-lg bg-amber-50 px-4 py-3 text-xs text-amber-700">
           Supabase belum dikonfigurasi — isi{" "}
@@ -110,9 +227,10 @@ function LoginForm() {
       )}
 
       <button
+        type="button"
         onClick={signInWithGoogle}
-        disabled={!supabaseConfigured}
-        className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-50"
+        disabled={!supabaseConfigured || loading || lockoutSeconds > 0}
+        className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-50 shadow-sm"
       >
         <GoogleIcon />
         Masuk dengan Google
@@ -132,10 +250,11 @@ function LoginForm() {
           <input
             type="email"
             required
+            disabled={lockoutSeconds > 0}
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             placeholder="nama@contoh.com"
-            className="w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-100"
+            className="w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-100 disabled:bg-slate-100 disabled:text-slate-400"
           />
         </div>
         <div>
@@ -148,10 +267,11 @@ function LoginForm() {
           <input
             type="password"
             required
+            disabled={lockoutSeconds > 0}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             placeholder="••••••••••"
-            className="w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-100"
+            className="w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-100 disabled:bg-slate-100 disabled:text-slate-400"
           />
         </div>
 
@@ -161,10 +281,14 @@ function LoginForm() {
 
         <button
           type="submit"
-          disabled={loading || !supabaseConfigured}
-          className="w-full rounded-xl bg-brand-500 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-brand-500/25 transition hover:bg-brand-600 disabled:opacity-60"
+          disabled={loading || !supabaseConfigured || lockoutSeconds > 0}
+          className="w-full rounded-xl bg-brand-500 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-brand-500/25 transition hover:bg-brand-600 active:scale-95 disabled:opacity-60"
         >
-          {loading ? "Memproses..." : "Sign In →"}
+          {loading
+            ? "Memproses..."
+            : lockoutSeconds > 0
+            ? `Tunggu (${lockoutSeconds}s)`
+            : "Sign In →"}
         </button>
       </form>
 
