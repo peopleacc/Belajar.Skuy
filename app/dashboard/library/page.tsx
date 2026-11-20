@@ -9,8 +9,8 @@ type ChapterRow = {
   id: string;
   chapter_number: number;
   title: string;
-  body: { status?: string } | null;
   image_url: string | null;
+  status?: string | null;
 };
 
 type ModuleRow = {
@@ -21,8 +21,8 @@ type ModuleRow = {
   contents: ChapterRow[];
 };
 
-function isGenerated(body: ChapterRow["body"]) {
-  return body != null && body.status !== "pending";
+function isGenerated(c: ChapterRow) {
+  return c.status !== "pending";
 }
 
 export default async function LibraryPage() {
@@ -33,7 +33,7 @@ export default async function LibraryPage() {
     const supabase = await createClient();
     const { data } = await supabase
       .from("modules")
-      .select("id,title,description,created_at,contents(id,chapter_number,title,body,image_url)")
+      .select("id,title,description,created_at,contents(id,chapter_number,title,image_url,status:body->status)")
       .gt("total_chapters", 0)
       .order("created_at", { ascending: false });
     modules = (data ?? []) as ModuleRow[];
@@ -44,7 +44,7 @@ export default async function LibraryPage() {
     .map((m) => ({
       ...m,
       chapters: (m.contents ?? [])
-        .filter((c) => isGenerated(c.body))
+        .filter(isGenerated)
         .sort((a, b) => a.chapter_number - b.chapter_number),
     }))
     .filter((m) => m.chapters.length > 0);
@@ -58,9 +58,10 @@ export default async function LibraryPage() {
       </p>
 
       {!configured && (
-        <div className="mt-6 rounded-2xl bg-amber-50 px-5 py-4 text-sm text-amber-700">
-          ⚠ Supabase belum dikonfigurasi. Isi <code className="font-mono">next/.env.local</code>{" "}
-          agar Study Library menampilkan data asli.
+        <div className="mt-6 rounded-2xl bg-amber-50 px-5 py-4 text-sm text-amber-700 flex items-center gap-2">
+          <i className="bi bi-exclamation-triangle-fill text-amber-500"></i>
+          <span>Supabase belum dikonfigurasi. Isi <code className="font-mono">next/.env.local</code>{" "}
+          agar Study Library menampilkan data asli.</span>
         </div>
       )}
 
@@ -114,7 +115,7 @@ export default async function LibraryPage() {
                       />
                     ) : (
                       <div className="flex h-24 items-center justify-center bg-gradient-to-br from-brand-500 to-brand-800 text-2xl">
-                        📘
+                        <i className="bi bi-journal-text text-white"></i>
                       </div>
                     )}
                     <div className="p-4">

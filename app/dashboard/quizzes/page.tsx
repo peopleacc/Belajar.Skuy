@@ -9,14 +9,14 @@ import { LANG_COOKIE, getDict, normalizeLang } from "@/lib/i18n";
 type QuizListRow = {
   id: string;
   created_at: string;
-  questions: unknown[];
-  modules: { title: string } | null;
+  questionCount: number;
+  moduleTitle: string;
 };
 
 type ModuleWithContents = {
   id: string;
   title: string;
-  contents: { id: string; chapter_number: number; title: string; body: Record<string, unknown> | null }[] | null;
+  contents: { id: string; chapter_number: number; title: string; status?: string | null }[] | null;
 };
 
 export default async function QuizzesPage() {
@@ -35,19 +35,26 @@ export default async function QuizzesPage() {
       .select("id, created_at, questions, modules(title)")
       .is("content_id", null) // kuis kustom saja (bukan kuis bab)
       .order("created_at", { ascending: false });
-    quizzes = (data ?? []) as unknown as QuizListRow[];
 
-    // Fitur N — daftar course + bab yang SUDAH punya materi (sumber "dari materi saya")
+    // Task 14C-DS: Hitung agregat questionCount di server & cegah serialisasi soal mentah ke Flight payload
+    quizzes = (data ?? []).map((q: any) => ({
+      id: q.id,
+      created_at: q.created_at,
+      questionCount: Array.isArray(q.questions) ? q.questions.length : 0,
+      moduleTitle: (q.modules?.title ?? "Kuis Kustom").replace(/^Kuis Kustom: /, ""),
+    }));
+
+    // Fitur N & Task 14C-DS — daftar course + bab yang SUDAH punya materi (tanpa unduh body mentah)
     const { data: courseRows } = await supabase
       .from("modules")
-      .select("id, title, contents(id, chapter_number, title, body)")
+      .select("id, title, contents(id, chapter_number, title, status:body->status)")
       .order("created_at", { ascending: false });
     materialSources = ((courseRows ?? []) as unknown as ModuleWithContents[])
       .map((m) => ({
         moduleId: m.id,
         moduleTitle: m.title,
         chapters: (m.contents ?? [])
-          .filter((c) => c.body != null && (c.body as { status?: string }).status !== "pending")
+          .filter((c) => c.status !== "pending")
           .sort((a, b) => a.chapter_number - b.chapter_number)
           .map((c) => ({ id: c.id, number: c.chapter_number, title: c.title })),
       }))
@@ -81,11 +88,9 @@ export default async function QuizzesPage() {
                 href={`/dashboard/quizzes/${q.id}`}
                 className="rounded-2xl bg-white p-5 shadow-card transition hover:-translate-y-0.5 hover:shadow-lg"
               >
-                <p className="font-bold">
-                  {(q.modules?.title ?? "Kuis Kustom").replace(/^Kuis Kustom: /, "")}
-                </p>
+                <p className="font-bold">{q.moduleTitle}</p>
                 <p className="mt-1 text-xs text-slate-400">
-                  {q.questions.length} {t.questionsUnit} ·{" "}
+                  {q.questionCount} {t.questionsUnit} ·{" "}
                   {new Date(q.created_at).toLocaleDateString("id-ID", {
                     day: "numeric",
                     month: "long",

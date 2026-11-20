@@ -6,18 +6,19 @@ import { apiFetch } from "@/lib/api";
 /**
  * POST /api/payment/cancel
  *
- * Membatalkan paket langganan berbayar user seketika.
+ * Membatalkan langganan berbayar user.
  *
- * Alur:
+ * Alur (F09):
  * 1. Validasi sesi login user (JWT via cookies).
  * 2. Cek apakah user sedang berada di paket berbayar aktif.
  * 3. Update tabel subscriptions:
  *    - status: 'canceled'
- *    - current_period_end: new Date().toISOString() (akses premium langsung dicabut)
+ *    - current_period_end: TETAP DIPERTAHANKAN (user tetap berhak menikmati akses
+ *      premium hingga masa aktif yang sudah dibayar berakhir).
  *    - updated_at: new Date().toISOString()
  * 4. Panggil Express internal route /api/entitlements/invalidate untuk
  *    membersihkan cache kuota Redis seketika.
- * 5. Return status sukses.
+ * 5. Return status sukses dengan pesan informatif.
  */
 export async function POST() {
   // ── 1. Autentikasi user ───────────────────────────────────────────────────
@@ -59,13 +60,12 @@ export async function POST() {
     );
   }
 
-  // ── 3. Update status subscriptions ke 'canceled' ─────────────────────────
+  // ── 3. Update status subscriptions ke 'canceled' (F09: Pertahankan masa aktif) ─
   const nowIso = new Date().toISOString();
   const { error: updateErr } = await supabaseAdmin
     .from("subscriptions")
     .update({
       status: "canceled",
-      current_period_end: nowIso,
       updated_at: nowIso,
     })
     .eq("user_id", user.id);
@@ -90,6 +90,6 @@ export async function POST() {
 
   return NextResponse.json({
     success: true,
-    message: "Paket langganan berhasil dibatalkan. Akunmu kini kembali ke paket Gratis.",
+    message: "Paket langganan berhasil dibatalkan. Akses premium kamu tetap aktif hingga akhir periode berlangganan saat ini.",
   });
 }

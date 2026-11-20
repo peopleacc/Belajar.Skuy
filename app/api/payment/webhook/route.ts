@@ -41,8 +41,6 @@ export async function POST(request: Request) {
     signature_key: receivedSignature,
     transaction_status: transactionStatus,
     fraud_status: fraudStatus,
-    custom_field1: userId,    // user_id yang disimpan saat membuat order
-    custom_field2: planCode,  // plan_code yang disimpan saat membuat order
   } = payload;
 
   // ── 2. Validasi field wajib ───────────────────────────────────────────────
@@ -70,26 +68,46 @@ export async function POST(request: Request) {
     );
   }
 
-  // ── 4. Ambil data order dari database ────────────────────────────────────
-  //    Jika custom_field tidak ada (kasus edge), fallback ke data dari DB.
+  // ── 4. Ambil data order dari database internal (F05) ──────────────────────
+  //    Keamanan F05: Ambil user_id, plan_code, amount, dan durasi secara eksklusif
+  //    dari database internal. Jangan pernah percaya custom_field dari payload luar.
   const { data: orderRow, error: orderErr } = await supabaseAdmin
     .from("orders")
-    .select("id, user_id, plan_code, status, duration_months")
+    .select("id, user_id, plan_code, amount, status, duration_months")
     .eq("id", orderId)
     .maybeSingle();
 
-  // Tentukan user_id dan plan_code yang akan dipakai
-  const resolvedUserId = userId || orderRow?.user_id;
-  const resolvedPlanCode = planCode || orderRow?.plan_code;
+  if (orderErr || !orderRow) {
+    console.error("[webhook] Order tidak ditemukan di database:", orderId, orderErr);
+    return NextResponse.json(
+      { error: "Order tidak ditemukan." },
+      { status: 404 }
+    );
+  }
+
+  // Verifikasi kesesuaian gross_amount dengan amount yang tersimpan di DB (F05)
+  if (Math.round(Number(orderRow.amount)) !== Math.round(Number(grossAmount))) {
+    console.error("[webhook] gross_amount mismatch:", {
+      orderId,
+      dbAmount: orderRow.amount,
+      receivedAmount: grossAmount,
+    });
+    return NextResponse.json(
+      { error: "Jumlah pembayaran tidak sesuai." },
+      { status: 400 }
+    );
+  }
+
+  const resolvedUserId = orderRow.user_id;
+  const resolvedPlanCode = orderRow.plan_code;
 
   if (!resolvedUserId || !resolvedPlanCode) {
-    console.error("[webhook] Tidak bisa resolve userId/planCode untuk order:", orderId);
-    // Tetap balas 200 agar Midtrans tidak retry terus
-    return NextResponse.json({ status: "unresolvable" });
+    console.error("[webhook] Data order tidak memiliki user_id atau plan_code valid:", orderId);
+    return NextResponse.json({ error: "Data order tidak valid." }, { status: 422 });
   }
 
   // ── 5. Idempotensi — jika sudah diproses, abaikan ────────────────────────
-  if (orderRow?.status === "paid") {
+  if (orderRow.status === "paid") {
     console.log("[webhook] Order sudah diproses sebelumnya:", orderId);
     return NextResponse.json({ status: "already_processed" });
   }
@@ -100,20 +118,33 @@ export async function POST(request: Request) {
     // ── 6a. PEMBAYARAN BERHASIL ───────────────────────────────────────────
     console.log("[webhook] Pembayaran berhasil:", orderId, resolvedPlanCode);
 
-    // Update status order ke 'paid'
-    await supabaseAdmin
-      .from("orders")
-      .update({ status: "paid", updated_at: new Date().toISOString() })
-      .eq("id", orderId);
-
-    // Aktifkan / perbarui langganan user di tabel subscriptions.
-    // Durasi dinamis berdasarkan duration_months (1 bulan = 30 hari, 6 bulan = 180 hari, 1 tahun = 365 hari)
-    const months = orderRow?.duration_months ?? 1;
+    // Hitung durasi dan period end (F09: Akumulatif jika perpanjangan paket yang sama)
+    const months = orderRow.duration_months ?? 1;
     const daysToAdd = months === 12 ? 365 : months * 30;
-    const periodEnd = new Date(
-      Date.now() + daysToAdd * 24 * 60 * 60 * 1000
-    ).toISOString();
+    const msToAdd = daysToAdd * 24 * 60 * 60 * 1000;
 
+    const { data: existingSub } = await supabaseAdmin
+      .from("subscriptions")
+      .select("plan_code, status, current_period_end")
+      .eq("user_id", resolvedUserId)
+      .maybeSingle();
+
+    let baseTime = Date.now();
+    if (
+      existingSub &&
+      existingSub.plan_code === resolvedPlanCode &&
+      existingSub.current_period_end
+    ) {
+      const existingEndMs = new Date(existingSub.current_period_end).getTime();
+      if (existingEndMs > baseTime) {
+        baseTime = existingEndMs; // Akumulasi hari tersisa dari langganan aktif
+      }
+    }
+
+    const periodEnd = new Date(baseTime + msToAdd).toISOString();
+
+    // F06: Eksekusi atomik — upsert subscriptions TERLEBIH DAHULU sebelum menandai order 'paid'.
+    // Jika upsert subscriptions gagal, return HTTP 500 agar Midtrans me-retry notifikasi ini.
     const { error: subErr } = await supabaseAdmin
       .from("subscriptions")
       .upsert(
@@ -131,8 +162,20 @@ export async function POST(request: Request) {
 
     if (subErr) {
       console.error("[webhook] Gagal upsert subscriptions:", subErr);
-      // Jangan return error 5xx — Midtrans akan retry berulang kali.
-      // Log sudah dicatat; rekonsiliasi manual jika perlu.
+      return NextResponse.json(
+        { error: "Gagal memperbarui langganan pengguna." },
+        { status: 500 }
+      );
+    }
+
+    // Hanya setelah subscriptions berhasil aktif, tandai status order ke 'paid'
+    const { error: orderUpdateErr } = await supabaseAdmin
+      .from("orders")
+      .update({ status: "paid", updated_at: new Date().toISOString() })
+      .eq("id", orderId);
+
+    if (orderUpdateErr) {
+      console.warn("[webhook] Peringatan: Gagal memperbarui status order ke paid:", orderUpdateErr);
     }
 
     return NextResponse.json({ status: "success" });

@@ -46,7 +46,7 @@ export default function BillingCycleToggle({
 
   return (
     <div className="flex flex-col items-center justify-center gap-2 mb-8">
-      <div className="inline-flex items-center rounded-2xl border border-slate-200 bg-white p-1.5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+      <div className="inline-flex items-center rounded-2xl border border-slate-200 bg-white p-1.5 shadow-sm">
         {options.map((opt) => {
           const isActive = activeCycle === opt.cycle;
           return (
@@ -57,7 +57,7 @@ export default function BillingCycleToggle({
               className={`relative flex items-center gap-2 rounded-xl px-4 py-2.5 text-xs font-semibold transition-all duration-200 sm:text-sm ${
                 isActive
                   ? "bg-brand-500 text-white shadow-md shadow-brand-500/25"
-                  : "text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white"
+                  : "text-slate-600 hover:text-slate-900"
               }`}
             >
               <span>{opt.label}</span>

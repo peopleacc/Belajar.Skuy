@@ -8,6 +8,7 @@ import {
   enabledFromCounts,
   type QuizTypeCounts,
 } from "@/components/GenerateSettings";
+import QuotaExceededModal, { isQuotaError, type QuotaModalState } from "@/components/QuotaExceededModal";
 
 export type MaterialSource = {
   moduleId: string;
@@ -28,6 +29,7 @@ export default function CustomQuizForm({
 }) {
   const router = useRouter();
   const fileRef = useRef<HTMLInputElement>(null);
+  const [quotaModal, setQuotaModal] = useState<QuotaModalState>({ isOpen: false });
   const [tab, setTab] = useState<SourceTab>("text");
   const [text, setText] = useState("");
   const [ownQuestionsText, setOwnQuestionsText] = useState("");
@@ -40,6 +42,7 @@ export default function CustomQuizForm({
   const [selectedChapterIds, setSelectedChapterIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [suggestions, setSuggestions] = useState<string[]>([]);
 
   const selectedModule = useMemo(
     () => materialSources.find((m) => m.moduleId === selectedModuleId) ?? null,
@@ -112,6 +115,20 @@ export default function CustomQuizForm({
         const res = await fetch("/api/quiz/custom", { method: "POST", body: form });
         const data = await res.json();
         if (!res.ok) {
+          if (isQuotaError(res.status, data)) {
+            setQuotaModal({
+              isOpen: true,
+              message: data.error,
+              featureName: "Kuis Kustom",
+              targetPlan: "premium",
+              quota: data.quota ?? null,
+            });
+          }
+          if (res.status === 422 && Array.isArray(data.suggestions) && data.suggestions.length > 0) {
+            setSuggestions(data.suggestions);
+          } else {
+            setSuggestions([]);
+          }
           setError(data.error ?? "Gagal membuat kuis. Coba lagi ya.");
           setLoading(false);
           return;
@@ -133,9 +150,15 @@ export default function CustomQuizForm({
       setError("Isi teks materi dulu ya.");
       return;
     }
-    if (tab === "pdf" && !file) {
-      setError("Unggah file PDF dulu ya.");
-      return;
+    if (tab === "pdf") {
+      if (!file) {
+        setError("Unggah file PDF dulu ya.");
+        return;
+      }
+      if (file.size > 5 * 1024 * 1024) {
+        setError("Ukuran berkas PDF maksimal 5 MB.");
+        return;
+      }
     }
 
     setLoading(true);
@@ -156,6 +179,20 @@ export default function CustomQuizForm({
       const res = await fetch("/api/quiz/custom", { method: "POST", body: form });
       const data = await res.json();
       if (!res.ok) {
+        if (isQuotaError(res.status, data)) {
+          setQuotaModal({
+            isOpen: true,
+            message: data.error,
+            featureName: "Kuis Kustom",
+            targetPlan: "premium",
+            quota: data.quota ?? null,
+          });
+        }
+        if (res.status === 422 && Array.isArray(data.suggestions) && data.suggestions.length > 0) {
+          setSuggestions(data.suggestions);
+        } else {
+          setSuggestions([]);
+        }
         setError(data.error ?? "Gagal membuat kuis. Coba lagi ya.");
         setLoading(false);
         return;
@@ -174,31 +211,31 @@ export default function CustomQuizForm({
     desc: string;
     icon: string;
   }[] = [
-    {
-      key: "text",
-      label: "Tempel Teks",
-      desc: "Buat kuis instan dari catatan, artikel, atau ringkasan teks bebas.",
-      icon: "bi-clipboard2-text",
-    },
-    {
-      key: "pdf",
-      label: "Dokumen PDF",
-      desc: "Ekstrak materi dari modul kuliah, e-book, atau slide presentasi PDF.",
-      icon: "bi-file-earmark-pdf-fill",
-    },
-    {
-      key: "materials",
-      label: "Materi Kursus Saya",
-      desc: "Pilih bab dari kursus yang sudah kamu buat sebelumnya di akunmu.",
-      icon: "bi-journal-bookmark-fill",
-    },
-    {
-      key: "own_questions",
-      label: "Tulis Soal Sendiri",
-      desc: "Tulis daftar pertanyaanmu, AI akan melengkapi opsi dan kunci jawabannya.",
-      icon: "bi-pencil-square",
-    },
-  ];
+      {
+        key: "text",
+        label: "Tempel Teks",
+        desc: "Buat kuis instan dari catatan, artikel, atau ringkasan teks bebas.",
+        icon: "bi-clipboard2s-text",
+      },
+      {
+        key: "pdf",
+        label: "Dokumen PDF",
+        desc: "Ekstrak materi dari modul kuliah, e-book, atau slide presentasi PDF.",
+        icon: "bi-file-earmark-pdf-fill",
+      },
+      {
+        key: "materials",
+        label: "Materi Kursus Saya",
+        desc: "Pilih bab dari kursus yang sudah kamu buat sebelumnya di akunmu.",
+        icon: "bi-journal-bookmark-fill",
+      },
+      {
+        key: "own_questions",
+        label: "Tulis Soal Sendiri",
+        desc: "Tulis daftar pertanyaanmu, AI akan melengkapi opsi dan kunci jawabannya.",
+        icon: "bi-pencil-square",
+      },
+    ];
 
   return (
     <form onSubmit={handleSubmit} className="rounded-sm bg-white p-6 shadow-card">
@@ -219,18 +256,16 @@ export default function CustomQuizForm({
                 setTab(t.key);
                 setError(null);
               }}
-              className={`group relative flex flex-col items-start rounded-xl border p-3.5 text-left transition hover:-translate-y-0.5 hover:shadow-sm ${
-                active
-                  ? "border-brand-500 bg-brand-500/10 text-brand-700 shadow-sm ring-1 ring-brand-500/20"
-                  : "border-slate-200 bg-white hover:border-slate-300"
-              }`}
+              className={`group relative flex flex-col items-start rounded-xl border p-3.5 text-left transition hover:-translate-y-0.5 hover:shadow-sm ${active
+                ? "border-brand-500 bg-brand-500/10 text-brand-700 shadow-sm ring-1 ring-brand-500/20"
+                : "border-slate-200 bg-white hover:border-slate-300"
+                }`}
             >
               <span
-                className={`mb-2.5 flex h-9 w-9 items-center justify-center rounded-lg text-lg transition ${
-                  active
-                    ? "bg-brand-500 text-white"
-                    : "bg-brand-500/10 text-brand-600 group-hover:bg-brand-500/20"
-                }`}
+                className={`mb-2.5 flex h-9 w-9 items-center justify-center rounded-lg text-lg transition ${active
+                  ? "bg-brand-500 text-white"
+                  : "bg-brand-500/10 text-brand-600 group-hover:bg-brand-500/20"
+                  }`}
               >
                 <i className={`bi ${t.icon}`}></i>
               </span>
@@ -252,11 +287,10 @@ export default function CustomQuizForm({
               <button
                 type="button"
                 onClick={() => setInputMode("fields")}
-                className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition ${
-                  inputMode === "fields"
-                    ? "bg-brand-500 text-white"
-                    : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-                }`}
+                className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition ${inputMode === "fields"
+                  ? "bg-brand-500 text-white"
+                  : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                  }`}
               >
                 <span className="inline-flex items-center gap-1.5">
                   <i className={`bi bi-pencil-square ${inputMode === "fields" ? "text-white" : "text-brand-500"}`}></i>
@@ -266,11 +300,10 @@ export default function CustomQuizForm({
               <button
                 type="button"
                 onClick={() => setInputMode("bulk")}
-                className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition ${
-                  inputMode === "bulk"
-                    ? "bg-brand-500 text-white"
-                    : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-                }`}
+                className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition ${inputMode === "bulk"
+                  ? "bg-brand-500 text-white"
+                  : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                  }`}
               >
                 <span className="inline-flex items-center gap-1.5">
                   <i className={`bi bi-clipboard2-text ${inputMode === "bulk" ? "text-white" : "text-brand-500"}`}></i>
@@ -374,7 +407,17 @@ Sebutkan dan jelaskan Hukum I Newton!`}
               accept="application/pdf"
               className="hidden"
               disabled={loading}
-              onChange={(e) => setFileName(e.target.files?.[0]?.name ?? null)}
+              onChange={(e) => {
+                const selected = e.target.files?.[0];
+                if (selected && selected.size > 5 * 1024 * 1024) {
+                  setError("Ukuran berkas PDF maksimal 5 MB.");
+                  setFileName(null);
+                  e.target.value = "";
+                  return;
+                }
+                setError(null);
+                setFileName(selected?.name ?? null);
+              }}
             />
           </label>
         </div>
@@ -424,11 +467,10 @@ Sebutkan dan jelaskan Hukum I Newton!`}
                     return (
                       <label
                         key={c.id}
-                        className={`flex items-center gap-2.5 rounded-xl border px-3 py-2 text-sm transition ${
-                          checked
-                            ? "border-brand-500 bg-brand-50"
-                            : "border-slate-200 hover:bg-slate-50"
-                        } ${disabledCheckbox ? "opacity-50" : "cursor-pointer"}`}
+                        className={`flex items-center gap-2.5 rounded-xl border px-3 py-2 text-sm transition ${checked
+                          ? "border-brand-500 bg-brand-50"
+                          : "border-slate-200 hover:bg-slate-50"
+                          } ${disabledCheckbox ? "opacity-50" : "cursor-pointer"}`}
                       >
                         <input
                           type="checkbox"
@@ -508,8 +550,70 @@ Sebutkan dan jelaskan Hukum I Newton!`}
       </div>
 
       {error && (
-        <p className="mt-3 rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-600">{error}</p>
+        <div className="mt-3 flex items-start gap-2.5 rounded-xl bg-rose-50 px-3.5 py-2.5 text-xs text-rose-700 border border-rose-200">
+          <i className="bi bi-exclamation-triangle-fill text-rose-500 shrink-0 mt-0.5"></i>
+          <div className="flex-1">
+            <span className="font-semibold">{error}</span>
+            {suggestions.length > 0 && (
+              <div className="mt-2.5 pt-2 border-t border-rose-200/60">
+                <p className="font-semibold text-rose-800 text-[11px] mb-1.5 flex items-center gap-1">
+                  <i className="bi bi-lightbulb-fill text-amber-500"></i>
+                  <span>Saran materi yang lebih spesifik / terarah:</span>
+                </p>
+                <div className="flex flex-wrap gap-1.5">
+                  {suggestions.map((s, idx) => (
+                    <button
+                      key={idx}
+                      type="button"
+                      onClick={() => {
+                        setText(s);
+                        setError(null);
+                        setSuggestions([]);
+                      }}
+                      className="inline-flex items-center gap-1 rounded-lg bg-white border border-rose-300 px-2.5 py-1 text-[11px] font-medium text-rose-800 hover:bg-rose-100/70 hover:border-rose-400 transition"
+                    >
+                      <i className="bi bi-arrow-right-short text-rose-500"></i>
+                      <span>{s}</span>
+                    </button>
+                  ))}
+                </div>
+                <p className="mt-2 text-[10px] text-slate-500 flex items-center gap-1">
+                  <i className="bi bi-shield-check text-emerald-600"></i>
+                  <span>Kuota kuis harianmu tidak terpotong karena materi belum diproses.</span>
+                </p>
+              </div>
+            )}
+            {isQuotaError(0, error) && (
+              <button
+                type="button"
+                onClick={() =>
+                  setQuotaModal({
+                    isOpen: true,
+                    message: error,
+                    featureName: "Kuis Kustom",
+                    targetPlan: "premium",
+                  })
+                }
+                className="mt-1.5 flex items-center gap-1 text-xs font-bold text-brand-700 hover:text-brand-800 hover:underline"
+              >
+                <span>Lihat Pilihan Paket & Upgrade</span>
+                <i className="bi bi-arrow-right"></i>
+              </button>
+            )}
+          </div>
+        </div>
       )}
+
+      {/* Modal Kuota Habis & Pilihan Upgrade Premium */}
+      <QuotaExceededModal
+        isOpen={quotaModal.isOpen}
+        onClose={() => setQuotaModal({ isOpen: false })}
+        title={quotaModal.title}
+        message={quotaModal.message}
+        featureName={quotaModal.featureName}
+        targetPlan={quotaModal.targetPlan}
+        quota={quotaModal.quota}
+      />
     </form>
   );
 }

@@ -15,13 +15,15 @@ export default async function SimulationResultsPage() {
   if (!user) redirect("/login");
 
   const supabase = await createClient();
-  const history = await fetchSimulationHistory(supabase);
+  // Task 14E-SH: Batasi 50 riwayat simulasi pada query database
+  const history = await fetchSimulationHistory(supabase, { limit: 50 });
 
   return (
     <main className="mx-auto max-w-6xl p-8">
       <div className="mb-8">
-        <h1 className="text-2xl font-bold tracking-tight md:text-3xl">
-          📊 Rekap Hasil Simulasi Gabungan
+        <h1 className="text-2xl font-bold tracking-tight md:text-3xl flex items-center gap-2">
+          <i className="bi bi-bar-chart-line-fill text-brand-500"></i>
+          <span>Rekap Hasil Simulasi Gabungan</span>
         </h1>
         <p className="mt-1 text-sm text-slate-500">
           Lihat seluruh riwayat &amp; evaluasi performa latihan presentasi, Q&amp;A, interview kerja, &amp; wawancara bebas.

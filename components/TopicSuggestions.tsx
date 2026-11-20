@@ -5,7 +5,7 @@ import { pickSuggestions, type TopicSuggestion } from "@/lib/topicSuggestions";
 import TopicCategoryModal from "@/components/TopicCategoryModal";
 
 // Fitur V — chip rekomendasi topik di bawah tombol Generate Course. STATIS TOTAL: tidak ada
-// panggilan jaringan/AI sama sekali (menggantikan Fitur O yang lewat Express → AI → Redis).
+// panggilan jaringan/AI sama sekali (menggantikan Fitur O yang lewat Express -> AI -> Redis).
 export default function TopicSuggestions({
   ownedTitles,
   onPick,
@@ -17,7 +17,7 @@ export default function TopicSuggestions({
   const [isModalOpen, setIsModalOpen] = useState(false);
 
   // Randomisasi WAJIB di useEffect (bukan saat render/lazy useState) — kalau tidak, server
-  // merender satu urutan dan client mengocok urutan lain → hydration mismatch.
+  // merender satu urutan dan client mengocok urutan lain -> hydration mismatch.
   const shuffle = useCallback(() => {
     setTopics(pickSuggestions(ownedTitles));
   }, [ownedTitles]);
@@ -31,22 +31,22 @@ export default function TopicSuggestions({
   return (
     <div className="mt-4 border-t border-slate-100 pt-4">
       <div className="mb-2 flex items-center justify-between">
-        <p className="text-xs font-semibold text-slate-500">✨ Rekomendasi buat kamu</p>
+        <p className="text-xs font-semibold text-slate-500"><span className="inline-flex items-center gap-1.5"><i className="bi bi-stars text-brand-500"></i><span>Rekomendasi buat kamu</span></span></p>
         <div className="flex items-center gap-3">
           <button
             type="button"
             onClick={() => setIsModalOpen(true)}
-            className="flex items-center gap-1 text-xs font-semibold text-brand-600 transition hover:text-brand-700 hover:underline dark:text-brand-400"
+            className="flex items-center gap-1 text-xs font-semibold text-brand-600 transition hover:text-brand-700 hover:underline"
           >
             <i className="bi bi-grid-fill"></i>
-            <span>📂 Jelajahi Kategori</span>
+            <span>Jelajahi Kategori</span>
           </button>
           <button
             type="button"
             onClick={shuffle}
-            className="text-xs font-semibold text-slate-400 transition hover:text-slate-600 hover:underline dark:hover:text-slate-200"
+            className="text-xs font-semibold text-slate-400 transition hover:text-slate-600 hover:underline"
           >
-            ↻ Ganti
+            <span className="inline-flex items-center gap-1"><i className="bi bi-arrow-clockwise"></i><span>Ganti</span></span>
           </button>
         </div>
       </div>

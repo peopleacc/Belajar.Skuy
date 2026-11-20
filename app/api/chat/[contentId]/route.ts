@@ -8,6 +8,26 @@ import { apiFetch, expressErrorMessage } from "@/lib/api";
 // jadi 600 hanya berlaku penuh di paket yang mengizinkannya.
 export const maxDuration = 60;
 
+const MAX_CHAT_CHARS = 500;
+
+const INJECTION_PATTERNS = [
+  /ignore\s+(all\s+)?(previous|above)\s+instructions/i,
+  /system\s+prompt/i,
+  /developer\s+mode/i,
+  /\bjailbreak\b/i,
+  /\bact\s+as\s+dan\b/i,
+  /\bbypass\s+restriction/i,
+  /you\s+are\s+now\b/i,
+  /abaikan\s+(semua\s+)?instruksi/i,
+  /bocorkan\s+(system\s+)?prompt/i,
+  /kamu\s+sekarang\s+adalah/i,
+  /mode\s+pengembang/i,
+];
+
+function isPromptInjection(text: string): boolean {
+  return INJECTION_PATTERNS.some((pattern) => pattern.test(text));
+}
+
 // Proxy streaming chatbot (Modul 7/8): verifikasi user di sini, lalu
 // alirkan (pipe) SSE dari Express langsung ke browser tanpa buffering.
 export async function POST(
@@ -16,11 +36,30 @@ export async function POST(
 ) {
   const { contentId } = await params;
   const body = await request.json().catch(() => ({}));
-  const message = typeof body.message === "string" ? body.message.trim() : "";
+  const rawMessage = typeof body.message === "string" ? body.message.trim() : "";
 
-  if (!message) {
+  if (!rawMessage) {
     return NextResponse.json({ error: "Pesan tidak boleh kosong." }, { status: 400 });
   }
+
+  if (rawMessage.length > MAX_CHAT_CHARS) {
+    return NextResponse.json(
+      { error: `Pesan terlalu panjang (maksimal ${MAX_CHAT_CHARS} karakter).` },
+      { status: 400 }
+    );
+  }
+
+  if (isPromptInjection(rawMessage)) {
+    return NextResponse.json(
+      {
+        error:
+          "Pertanyaanmu terdeteksi memuat instruksi di luar koridor pembelajaran bab ini. Silakan tanyakan materi bab secara langsung ya.",
+      },
+      { status: 422 }
+    );
+  }
+
+  const message = rawMessage;
   if (!supabaseConfigured) {
     return NextResponse.json(
       { error: "Supabase belum dikonfigurasi (next/.env.local)." },

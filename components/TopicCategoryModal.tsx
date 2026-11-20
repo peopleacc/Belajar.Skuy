@@ -101,23 +101,23 @@ export default function TopicCategoryModal({
       />
 
       {/* Container Modal */}
-      <div className="relative z-10 flex h-[90vh] max-h-[780px] w-full max-w-4xl flex-col overflow-hidden rounded-3xl bg-white shadow-2xl transition-all dark:bg-ink-800 dark:border dark:border-slate-700">
+      <div className="relative z-10 flex h-[90vh] max-h-[780px] w-full max-w-4xl flex-col overflow-hidden rounded-3xl bg-white shadow-2xl transition-all">
         
         {/* Header Modal */}
-        <div className="border-b border-slate-100 p-4 sm:p-6 dark:border-slate-700/60">
+        <div className="border-b border-slate-100 p-4 sm:p-6">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <div className="inline-flex items-center gap-2 rounded-full bg-brand-50 px-3 py-1 text-xs font-semibold text-brand-600 dark:bg-brand-950/40 dark:text-brand-300">
+              <div className="inline-flex items-center gap-2 rounded-full bg-brand-50 px-3 py-1 text-xs font-semibold text-brand-600">
                 <i className="bi bi-compass-fill"></i>
                 <span>Eksplorasi Katalog Rekomendasi Topik</span>
               </div>
               <h2
                 id="topic-modal-title"
-                className="mt-2 text-xl font-bold text-slate-800 sm:text-2xl dark:text-light"
+                className="mt-2 text-xl font-bold text-slate-800 sm:text-2xl"
               >
                 Pilih Rekomendasi Topik Pembelajaran
               </h2>
-              <p className="mt-1 text-xs text-slate-500 sm:text-sm dark:text-slate-400">
+              <p className="mt-1 text-xs text-slate-500 sm:text-sm">
                 Temukan ide prompt course berdasarkan jenjang sekolah (SD, SMP, SMA), kuliah, maupun koding.
               </p>
             </div>
@@ -125,7 +125,7 @@ export default function TopicCategoryModal({
             <button
               type="button"
               onClick={onClose}
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-slate-200 text-slate-500 transition hover:bg-slate-100 hover:text-slate-700 dark:border-slate-700 dark:text-slate-400 dark:hover:bg-slate-700"
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-slate-200 text-slate-500 transition hover:bg-slate-100 hover:text-slate-700"
               aria-label="Tutup modal"
             >
               <i className="bi bi-x-lg text-lg"></i>
@@ -140,13 +140,13 @@ export default function TopicCategoryModal({
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Cari topik atau materi pelajaran (misal: Fotosintesis, Python, Kalkulus, SD Kelas 4)..."
-              className="w-full rounded-2xl border border-slate-200 bg-slate-50/70 py-2.5 pl-10 pr-10 text-xs text-slate-800 transition focus:border-brand-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500/20 sm:text-sm dark:border-slate-700 dark:bg-slate-900/40 dark:text-light dark:focus:bg-slate-900"
+              className="w-full rounded-2xl border border-slate-200 bg-slate-50/70 py-2.5 pl-10 pr-10 text-xs text-slate-800 transition focus:border-brand-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500/20 sm:text-sm"
             />
             {searchQuery && (
               <button
                 type="button"
                 onClick={() => setSearchQuery("")}
-                className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
               >
                 <i className="bi bi-x-circle-fill"></i>
               </button>
@@ -156,7 +156,7 @@ export default function TopicCategoryModal({
 
         {/* Navigation Tabs Kategori Utama (Hanya Tampil Jika Tidak Sedang Mencarikan Hasil Global) */}
         {!searchQuery && (
-          <div className="border-b border-slate-100 bg-slate-50/50 px-4 pt-3 sm:px-6 dark:border-slate-700/60 dark:bg-slate-900/20">
+          <div className="border-b border-slate-100 bg-slate-50/50 px-4 pt-3 sm:px-6">
             {/* Main Tabs */}
             <div className="no-scrollbar flex items-center gap-1.5 overflow-x-auto pb-3">
               {MAIN_CATEGORIES.map((cat) => {
@@ -169,7 +169,7 @@ export default function TopicCategoryModal({
                     className={`flex shrink-0 items-center gap-2 rounded-xl px-3.5 py-2 text-xs font-semibold transition ${
                       isActive
                         ? "bg-brand-500 text-white shadow-sm shadow-brand-500/30"
-                        : "bg-white text-slate-600 hover:bg-slate-100 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
+                        : "bg-white text-slate-600 hover:bg-slate-100"
                     }`}
                   >
                     <i className={`bi ${cat.icon}`}></i>
@@ -181,7 +181,7 @@ export default function TopicCategoryModal({
 
             {/* Sub-category Filter Pills */}
             {currentCategory.subCategories.length > 0 && (
-              <div className="no-scrollbar flex items-center gap-2 overflow-x-auto border-t border-slate-200/60 py-2.5 dark:border-slate-700/40">
+              <div className="no-scrollbar flex items-center gap-2 overflow-x-auto border-t border-slate-200/60 py-2.5">
                 <span className="shrink-0 text-[11px] font-medium text-slate-400">Sub-klasifikasi:</span>
                 {currentCategory.subCategories.map((sub) => {
                   const isSubActive = activeSubCategoryId === sub.id;
@@ -192,8 +192,8 @@ export default function TopicCategoryModal({
                       onClick={() => setActiveSubCategoryId(sub.id)}
                       className={`shrink-0 rounded-lg px-2.5 py-1 text-[11px] font-semibold transition ${
                         isSubActive
-                          ? "bg-slate-800 text-white dark:bg-light dark:text-slate-900"
-                          : "bg-slate-200/60 text-slate-600 hover:bg-slate-200 dark:bg-slate-700/50 dark:text-slate-300 dark:hover:bg-slate-700"
+                          ? "bg-slate-800 text-white"
+                          : "bg-slate-200/60 text-slate-600 hover:bg-slate-200"
                       }`}
                     >
                       {sub.name}
@@ -208,9 +208,9 @@ export default function TopicCategoryModal({
         {/* Content Body: Grid Items */}
         <div className="flex-1 overflow-y-auto p-4 sm:p-6">
           {searchQuery && (
-            <div className="mb-4 text-xs text-slate-500 dark:text-slate-400">
+            <div className="mb-4 text-xs text-slate-500">
               Menampilkan {filteredPrompts.length} hasil untuk pencarian &quot;
-              <span className="font-semibold text-slate-700 dark:text-slate-200">
+              <span className="font-semibold text-slate-700">
                 {searchQuery}
               </span>
               &quot;
@@ -219,10 +219,10 @@ export default function TopicCategoryModal({
 
           {filteredPrompts.length === 0 ? (
             <div className="flex h-64 flex-col items-center justify-center text-center">
-              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-100 text-slate-400 dark:bg-slate-800">
+              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-100 text-slate-400">
                 <i className="bi bi-search text-xl"></i>
               </div>
-              <p className="mt-3 text-sm font-semibold text-slate-700 dark:text-slate-300">
+              <p className="mt-3 text-sm font-semibold text-slate-700">
                 Tidak ada topik yang sesuai
               </p>
               <p className="mt-1 text-xs text-slate-400">
@@ -234,18 +234,18 @@ export default function TopicCategoryModal({
               {filteredPrompts.map((item: PromptItem) => (
                 <div
                   key={item.id}
-                  className="group flex flex-col justify-between rounded-2xl border border-slate-200/80 bg-white p-4 transition-all hover:border-brand-300 hover:shadow-md dark:border-slate-700/60 dark:bg-slate-800/80 dark:hover:border-brand-500/50"
+                  className="group flex flex-col justify-between rounded-2xl border border-slate-200/80 bg-white p-4 transition-all hover:border-brand-300 hover:shadow-md"
                 >
                   <div>
                     <div className="flex items-center justify-between gap-2">
-                      <span className="inline-block rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600 dark:bg-slate-700 dark:text-slate-300">
+                      <span className="inline-block rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600">
                         {item.badge ?? item.categoryId.toUpperCase()}
                       </span>
                     </div>
-                    <h3 className="mt-2 text-xs font-bold text-slate-800 group-hover:text-brand-600 sm:text-sm dark:text-slate-100 dark:group-hover:text-brand-400">
+                    <h3 className="mt-2 text-xs font-bold text-slate-800 group-hover:text-brand-600 sm:text-sm">
                       {item.title}
                     </h3>
-                    <p className="mt-1 line-clamp-2 text-[11px] text-slate-500 dark:text-slate-400">
+                    <p className="mt-1 line-clamp-2 text-[11px] text-slate-500">
                       {item.reason}
                     </p>
                   </div>
@@ -257,7 +257,7 @@ export default function TopicCategoryModal({
                         onPick(item.promptText);
                         onClose();
                       }}
-                      className="inline-flex w-full items-center justify-center gap-1.5 rounded-xl bg-slate-100 py-2 text-xs font-semibold text-slate-700 transition group-hover:bg-brand-500 group-hover:text-white dark:bg-slate-700 dark:text-slate-200 dark:group-hover:bg-brand-500 dark:group-hover:text-white"
+                      className="inline-flex w-full items-center justify-center gap-1.5 rounded-xl bg-slate-100 py-2 text-xs font-semibold text-slate-700 transition group-hover:bg-brand-500 group-hover:text-white"
                     >
                       <span>Gunakan Topik Ini</span>
                       <i className="bi bi-arrow-right"></i>
@@ -270,14 +270,14 @@ export default function TopicCategoryModal({
         </div>
 
         {/* Footer Modal */}
-        <div className="flex items-center justify-between border-t border-slate-100 bg-slate-50/50 p-4 text-xs text-slate-500 dark:border-slate-700/60 dark:bg-slate-900/30 dark:text-slate-400">
+        <div className="flex items-center justify-between border-t border-slate-100 bg-slate-50/50 p-4 text-xs text-slate-500">
           <span>
-            💡 Menampilkan <strong className="text-slate-700 dark:text-slate-200">{filteredPrompts.length}</strong> topik pilihan.
+            <i className="bi bi-lightbulb-fill text-amber-500 mr-1.5"></i>Menampilkan <strong className="text-slate-700">{filteredPrompts.length}</strong> topik pilihan.
           </span>
           <button
             type="button"
             onClick={onClose}
-            className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+            className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
           >
             Tutup
           </button>

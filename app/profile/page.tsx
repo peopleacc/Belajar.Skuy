@@ -8,7 +8,8 @@ import { getSessionUser } from "@/lib/session";
 import { LANG_COOKIE, getDict, normalizeLang } from "@/lib/i18n";
 import EditProfileForm from "@/components/EditProfileForm";
 import SubscriptionDetailsCard from "@/components/SubscriptionDetailsCard";
-import { getUserSubscriptionDetails } from "@/lib/subscriptions";
+import QuotaOverviewCard from "@/components/QuotaOverviewCard";
+import { getUserSubscriptionDetails, getUserQuotaBalances } from "@/lib/subscriptions";
 
 export const metadata: Metadata = {
   title: "Edit Profil — belajar.skuy",
@@ -30,13 +31,16 @@ export default async function ProfilePage() {
 
   if (!supabaseConfigured) redirect("/portal");
   const supabase = await createClient();
-  const [{ data: profile }, subDetails] = await Promise.all([
+
+  // Task 14B-SM: Single-pass subscription & quota memoization
+  const subDetails = await getUserSubscriptionDetails(user.id);
+  const [{ data: profile }, quotaSummary] = await Promise.all([
     supabase
       .from("profiles")
       .select("username, full_name, avatar_url, tanggal_lahir, pendidikan_saat_ini, jurusan, institusi, level_bicara, tujuan_user")
       .eq("id", user.id)
       .single(),
-    getUserSubscriptionDetails(user.id),
+    getUserQuotaBalances(user.id, subDetails),
   ]);
 
   return (
@@ -69,12 +73,19 @@ export default async function ProfilePage() {
           </div>
         </div>
 
+        {/* ── Penggunaan Kuota Akun (Task 6K-QU) ────────────────────── */}
+        <section>
+          <QuotaOverviewCard quota={quotaSummary} />
+        </section>
+
         {/* ── Detail Paket & Pembayaran (planning-update-13) ──────── */}
         <section>
           <SubscriptionDetailsCard
             initialDetails={subDetails}
             t={t}
             lang={lang}
+            userName={profile?.full_name || profile?.username || user.email?.split("@")[0] || "Pengguna"}
+            userEmail={user.email || ""}
           />
         </section>
       </main>

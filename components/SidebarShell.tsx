@@ -4,6 +4,7 @@ import { createContext, useContext, useState, useEffect } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import Link from "next/link";
 import { createClient, supabaseConfigured } from "@/lib/supabase/client";
+import BrandLogo from "@/components/BrandLogo";
 
 interface SidebarContextType {
   isCollapsed: boolean;
@@ -156,9 +157,12 @@ export default function SidebarShell({
             title="Kembali ke Landing Page"
             className="group flex flex-col items-center justify-center transition hover:opacity-90"
           >
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-accent-fixed text-2xl font-bold text-secondary-fixed transition-transform duration-200 shadow-sm group-hover:scale-105">
-              <i className="bi bi-book text-xl"></i>
-            </div>
+            <BrandLogo
+              size="md"
+              variant="dark"
+              className="rounded-xl shadow-md transition-transform duration-200 group-hover:scale-105 ring-1 ring-white/10"
+              priority
+            />
             <div className="mt-1.5">
               <p className="text-sm font-bold leading-tight text-sidebar-fg">
                 belajar<span className="text-sidebar-dot">.skuy</span>
@@ -193,7 +197,7 @@ export default function SidebarShell({
         {/* Footer Akun & CTA */}
         <div className="space-y-2 border-t border-sidebar-border pt-3">
           {berbayar ? (
-            <div className="flex w-full items-center justify-center gap-2 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold capitalize text-emerald-700 dark:border-emerald-800/60 dark:bg-emerald-950/40 dark:text-emerald-300">
+            <div className="flex w-full items-center justify-center gap-2 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold capitalize text-emerald-700">
               <i className="bi bi-patch-check-fill text-emerald-500"></i>
               Paket {planCode}
             </div>
@@ -222,7 +226,8 @@ export default function SidebarShell({
               onClick={signOut}
               className="flex w-full items-center gap-3 rounded-md px-3 py-2 text-xs font-medium text-rose-500 transition hover:bg-rose-500/10"
             >
-              ⏻ Sign Out
+              <i className="bi bi-power"></i>
+              <span>Sign Out</span>
             </button>
           </div>
         </div>

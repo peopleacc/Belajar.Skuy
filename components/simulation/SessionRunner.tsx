@@ -5,13 +5,14 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { parseSlideFile, type SlideDeck, MAX_SLIDES } from "@/lib/slides";
 import { useSessionRecorder } from "@/components/simulation/useSessionRecorder";
-import { VoiceFrequency } from "@/components/simulation/VoiceFrequency";
 import { PreparationScreen } from "@/components/simulation/PreparationScreen";
-import { LiveCadenceHUD } from "@/components/simulation/LiveCadenceHUD";
+import MediaPipeConsentModal from "@/components/simulation/MediaPipeConsentModal";
+import { isQuotaError } from "@/components/QuotaExceededModal";
+import ActiveSessionModal, { type ActiveSessionData } from "@/components/simulation/ActiveSessionModal";
 
 /**
  * Fitur BA & BB — alur lengkap sesi simulasi presentasi di browser:
- * unggah PPTX/PDF → preview → rekam narasi PER SLIDE → tiap ganti slide, segmen
+ * unggah PPTX/PDF -> preview -> rekam narasi PER SLIDE -> tiap ganti slide, segmen
  * audio dikirim untuk ditranskrip (paralel, tidak menahan slide berikutnya).
  *
  * Mesin rekam/analisis/unggah-nya ada di `useSessionRecorder` — DIPAKAI BERSAMA
@@ -24,7 +25,7 @@ import { LiveCadenceHUD } from "@/components/simulation/LiveCadenceHUD";
 
 const MAX_SEGMENT_SECONDS = 120; // 2 menit/slide — standardisasi durasi per slide
 
-const CARD = "rounded-sm bg-white shadow-card";
+const CARD = "rounded-2xl border border-slate-200/80 bg-white shadow-sm";
 
 type Phase = "setup" | "preparing" | "running" | "finishing";
 
@@ -34,14 +35,20 @@ type Phase = "setup" | "preparing" | "running" | "finishing";
 // transkrip/laporan Bahasa Indonesia.
 type SessionLang = "id" | "en";
 const SESSION_LANGS: { value: SessionLang; label: string }[] = [
-  { value: "id", label: "🇮🇩 Bahasa Indonesia" },
-  { value: "en", label: "🇬🇧 Bahasa Inggris" },
+  { value: "id", label: "Bahasa Indonesia" },
+  { value: "en", label: "English (Bahasa Inggris)" },
 ];
 
 export default function SessionRunner({
+  presetSessionId,
+  presetTotalSlides,
+  initialIndex = 0,
   historySlot,
   skeletonAllowed = false,
 }: {
+  presetSessionId?: string;
+  presetTotalSlides?: number;
+  initialIndex?: number;
   /**
    * Fitur DF — ringkasan & riwayat sesi sebelumnya, dirender di SERVER lalu
    * dioper ke sini. Sengaja ditampilkan HANYA di fase setup: saat sesi berjalan,
@@ -53,12 +60,13 @@ export default function SessionRunner({
 } = {}) {
   const router = useRouter();
 
-  const [phase, setPhase] = useState<Phase>("setup");
+  const [phase, setPhase] = useState<Phase>(presetSessionId ? "running" : "setup");
   const [deck, setDeck] = useState<SlideDeck | null>(null);
   const [fileName, setFileName] = useState("");
   const [parsing, setParsing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [index, setIndex] = useState(0);
+  const [index, setIndex] = useState(initialIndex);
+  const [activeSessionRecovery, setActiveSessionRecovery] = useState<ActiveSessionData | null>(null);
   const [starting, setStarting] = useState(false);
   const [startNote, setStartNote] = useState("");
   const [scoring, setScoring] = useState(false);
@@ -68,8 +76,11 @@ export default function SessionRunner({
   const [skeletonWanted, setSkeletonWanted] = useState(false);
   const [renderFailed, setRenderFailed] = useState(false);
   const [sessionLang, setSessionLang] = useState<SessionLang>("id");
+  // Consent Gate MediaPipe (Task 2C-CG)
+  const [mediaPipeConsent, setMediaPipeConsent] = useState<"granted" | "denied" | null>(null);
+  const [consentModalOpen, setConsentModalOpen] = useState(false);
 
-  const sessionIdRef = useRef<string | null>(null);
+  const sessionIdRef = useRef<string | null>(presetSessionId ?? null);
   const previewRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const overlayCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -79,6 +90,44 @@ export default function SessionRunner({
     wantVisual: visualWanted,
     language: sessionLang,
   });
+
+  // Pastikan hardware kamera & mic dilepas saat komponen unmount / navigasi keluar (Task 5E-MR)
+  const releaseMediaRef = useRef(rec.releaseMedia);
+  releaseMediaRef.current = rec.releaseMedia;
+
+  useEffect(() => {
+    return () => {
+      releaseMediaRef.current();
+    };
+  }, []);
+
+  // Muat persetujuan MediaPipe yang tersimpan di perangkat pengguna (Task 2C-CG)
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const saved = localStorage.getItem("mediapipe_consent") as "granted" | "denied" | null;
+    if (saved) {
+      setMediaPipeConsent(saved);
+      if (saved === "denied") {
+        setVisualWanted(false);
+      }
+    }
+  }, []);
+
+  // Sesi resume / preset: siapkan media langsung jika presetSessionId disertakan
+  useEffect(() => {
+    if (!presetSessionId) return;
+    let alive = true;
+    void (async () => {
+      await rec.prepareMedia(setStartNote);
+      if (!alive) return;
+      setStartNote("");
+      rec.beginSegment();
+    })();
+    return () => {
+      alive = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [presetSessionId]);
 
   // ---- tandai 'abandoned' kalau tab ditutup di tengah sesi ----
   useEffect(() => {
@@ -100,14 +149,14 @@ export default function SessionRunner({
   // ---- lepas dokumen PDF: HANYA saat deck diganti / komponen dilepas ----
   // Dulu ini menyatu dengan listener di atas (deps [phase, deck]), sehingga
   // cleanup-nya — termasuk deck.destroy() — ikut jalan SETIAP `phase` berubah.
-  // Akibatnya dokumen PDF dihancurkan tepat saat sesi dimulai (setup→running),
+  // Akibatnya dokumen PDF dihancurkan tepat saat sesi dimulai (setup->running),
   // dan preview slide di fase berjalan selalu gagal dirender.
   useEffect(() => {
     return () => deck?.destroy();
   }, [deck]);
 
   // ---- preview PDF: render halaman aktif ke canvas ----
-  // `phase` IKUT jadi dependensi: pindah fase setup→running memasang ulang elemen
+  // `phase` IKUT jadi dependensi: pindah fase setup->running memasang ulang elemen
   // canvas di posisi baru, jadi isinya wajib digambar ulang — tanpa ini canvasnya
   // kosong begitu sesi dimulai.
   useEffect(() => {
@@ -157,6 +206,36 @@ export default function SessionRunner({
     setPhase("preparing");
   }
 
+  function handleContinueToPrep() {
+    if (!deck) return;
+    // Task 2C-CG: Jika analisis visual aktif dan izin MediaPipe belum ada, tampilkan modal consent
+    if (visualWanted && mediaPipeConsent !== "granted") {
+      setConsentModalOpen(true);
+      return;
+    }
+    void goToPreparation();
+  }
+
+  function handleConsentAccept() {
+    if (typeof window !== "undefined") {
+      localStorage.setItem("mediapipe_consent", "granted");
+    }
+    setMediaPipeConsent("granted");
+    setVisualWanted(true);
+    setConsentModalOpen(false);
+    void goToPreparation();
+  }
+
+  function handleConsentDeclineAudioOnly() {
+    if (typeof window !== "undefined") {
+      localStorage.setItem("mediapipe_consent", "denied");
+    }
+    setMediaPipeConsent("denied");
+    setVisualWanted(false);
+    setConsentModalOpen(false);
+    void goToPreparation();
+  }
+
   async function startOfficialSession() {
     if (!deck) return;
     setError(null);
@@ -168,7 +247,9 @@ export default function SessionRunner({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          slides: deck.slides.map((s) => s.text),
+          type: "presentation",
+          totalSlides: deck.slides.length,
+          slides: deck.slides.map((s) => s.text ?? ""),
           settings: {
             language: sessionLang,
             noMic: rec.noMic,
@@ -179,9 +260,19 @@ export default function SessionRunner({
       });
       const data = await res.json();
       if (!res.ok) {
+        if (res.status === 409 && data.activeSession) {
+          setActiveSessionRecovery(data.activeSession);
+          rec.releaseMedia();
+          setStarting(false);
+          setPhase("setup");
+          return;
+        }
         setError(data.error ?? "Gagal membuat sesi.");
         setStarting(false);
-        setPhase("setup");
+        if (!isQuotaError(res.status, data)) {
+          rec.releaseMedia();
+          setPhase("setup");
+        }
         return;
       }
       sessionIdRef.current = data.sessionId;
@@ -190,6 +281,7 @@ export default function SessionRunner({
       rec.beginSegment();
     } catch {
       setError("Tidak bisa terhubung ke server. Coba lagi.");
+      rec.releaseMedia();
       setPhase("setup");
     } finally {
       setStarting(false);
@@ -198,8 +290,8 @@ export default function SessionRunner({
   }
 
   function nextSlide() {
-    if (!deck) return;
-    rec.closeSegment(sessionIdRef.current ?? "", index, deck.slides[index]?.imageBase64);
+    if (!deck && !presetSessionId) return;
+    rec.closeSegment(sessionIdRef.current ?? "", index, deck?.slides[index]?.imageBase64);
     setIndex((i) => i + 1);
     rec.beginSegment();
   }
@@ -207,7 +299,7 @@ export default function SessionRunner({
   async function finish() {
     setPhase("finishing");
     // metrik dikumpulkan sebelum analyzer ditutup
-    rec.closeSegment(sessionIdRef.current ?? "", index, deck?.slides[index]?.imageBase64);
+    await rec.closeSegment(sessionIdRef.current ?? "", index, deck?.slides[index]?.imageBase64);
     await rec.finalize();
     try {
       await fetch("/api/simulation/finish", {
@@ -224,14 +316,15 @@ export default function SessionRunner({
         body: JSON.stringify({ sessionId: sessionIdRef.current }),
       }).catch(() => {});
     } catch {
-      /* status tertinggal 'running' → beacon/daftar sesi yang menangani */
+      /* status tertinggal 'running' -> beacon/daftar sesi yang menangani */
     }
     router.push(`/simulation/${sessionIdRef.current}`);
   }
 
   // ============ Tampilan ============
 
-  const isLast = deck ? index === deck.slides.length - 1 : false;
+  const totalSlidesCount = deck?.slides.length || presetTotalSlides || 1;
+  const isLast = index >= totalSlidesCount - 1;
 
   /**
    * Preview slide = HASIL RENDER PDF-nya, bukan teks hasil ekstraksi. Teks slide
@@ -253,7 +346,15 @@ export default function SessionRunner({
         </p>
       )}
     </div>
-  ) : null;
+  ) : (
+    <div className="flex h-64 flex-col items-center justify-center rounded-xl border-2 border-dashed border-slate-200 bg-slate-50 p-6 text-center">
+      <i className="bi bi-easel2-fill text-4xl text-brand-500" />
+      <h3 className="mt-2 text-base font-bold text-slate-800">Slide {index + 1} dari {totalSlidesCount}</h3>
+      <p className="mt-1 text-xs text-slate-500">
+        Sesi presentasi dilanjutkan. Buka materi Anda dan presentasikan slide ini ke kamera & mikrofon.
+      </p>
+    </div>
+  );
 
   // ---- fase setup ----
   if (phase === "setup") {
@@ -280,9 +381,30 @@ export default function SessionRunner({
           />
         </label>
 
-        {parsing && <p className="mt-4 text-sm text-slate-500">⏳ Membaca file…</p>}
+        {parsing && (
+            <p className="mt-4 flex items-center justify-center gap-1.5 text-sm text-slate-500">
+              <i className="bi bi-hourglass-split animate-spin text-brand-500"></i>
+              <span>Membaca file…</span>
+            </p>
+          )}
         {error && (
-          <p className="mt-4 rounded-lg bg-rose-500/10 px-3 py-2 text-sm text-rose-500">{error}</p>
+          <div className="mt-4 flex items-start gap-2.5 rounded-xl bg-rose-50 p-3.5 text-xs text-rose-700 border border-rose-200">
+            <i className="bi bi-exclamation-triangle-fill text-rose-500 shrink-0 mt-0.5"></i>
+            <div className="flex-1">
+              <span>{error}</span>
+              {isQuotaError(0, error) && (
+                <div className="mt-2">
+                  <Link
+                    href="/pricing?plan=premium_presentasi"
+                    className="inline-flex items-center gap-1.5 font-bold text-brand-700 hover:text-brand-800 hover:underline"
+                  >
+                    <span>Upgrade ke Paket Premium Presentasi</span>
+                    <i className="bi bi-arrow-right"></i>
+                  </Link>
+                </div>
+              )}
+            </div>
+          </div>
         )}
 
         {deck && (
@@ -297,14 +419,14 @@ export default function SessionRunner({
                   disabled={index === 0}
                   className="rounded-lg border border-border px-3 py-1 text-sm disabled:opacity-40"
                 >
-                  ←
+                  <i className="bi bi-chevron-left"></i>
                 </button>
                 <button
                   onClick={() => setIndex((i) => Math.min(deck.slides.length - 1, i + 1))}
                   disabled={isLast}
                   className="rounded-lg border border-border px-3 py-1 text-sm disabled:opacity-40"
                 >
-                  →
+                  <i className="bi bi-chevron-right"></i>
                 </button>
               </div>
             </div>
@@ -361,7 +483,7 @@ export default function SessionRunner({
                   <span className="text-xs font-semibold text-slate-700">Visual Kerangka Kamera</span>
                   {!skeletonAllowed && (
                     <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800">
-                      🔒 Khusus Premium Presentasi, Gabungan, &amp; Pro
+                      Khusus Premium Presentasi, Gabungan, &amp; Pro
                     </span>
                   )}
                 </div>
@@ -379,15 +501,28 @@ export default function SessionRunner({
             </div>
 
             <button
-              onClick={() => void goToPreparation()}
+              onClick={handleContinueToPrep}
               disabled={starting}
-              className="mt-4 w-full rounded-xl bg-brand-500 py-3.5 text-sm font-semibold text-white shadow-lg shadow-brand-500/25 transition hover:bg-brand-600 active:scale-95 disabled:opacity-60"
+              className="mt-4 w-full rounded-xl bg-brand-500 py-3.5 text-sm font-semibold text-white shadow-lg shadow-brand-500/25 transition hover:bg-brand-600 active:scale-95 disabled:opacity-60 flex items-center justify-center gap-2"
             >
-              {starting ? `⏳ ${startNote || "Menyiapkan media…"}` : "👉 Lanjut ke Persiapan Simulasi"}
+              {starting ? (
+                <>
+                  <i className="bi bi-hourglass-split animate-spin"></i>
+                  <span>{startNote || "Menyiapkan media…"}</span>
+                </>
+              ) : (
+                <>
+                  <span>Lanjut ke Persiapan Simulasi</span>
+                  <i className="bi bi-arrow-right"></i>
+                </>
+              )}
             </button>
-            <p className="mt-2 text-center text-[11px] text-slate-400">
-              Izin mikrofon{visualWanted ? " & kamera" : ""} diminta saat masuk tahap persiapan. 🔒 Rekaman
-              tidak disimpan — hanya transkrip & angka metriknya.
+            <p className="mt-2 text-center text-[11px] text-slate-400 flex items-center justify-center gap-1.5">
+              <i className="bi bi-shield-lock-fill text-slate-400"></i>
+              <span>
+                Izin mikrofon{visualWanted ? " & kamera" : ""} diminta saat masuk tahap persiapan. Rekaman
+                tidak disimpan — hanya transkrip & angka metriknya.
+              </span>
             </p>
           </div>
         )}
@@ -398,6 +533,12 @@ export default function SessionRunner({
       <>
         {card}
         {historySlot}
+        <MediaPipeConsentModal
+          isOpen={consentModalOpen}
+          onAccept={handleConsentAccept}
+          onDeclineAudioOnly={handleConsentDeclineAudioOnly}
+          onClose={() => setConsentModalOpen(false)}
+        />
       </>
     );
   }
@@ -405,35 +546,80 @@ export default function SessionRunner({
   // ---- fase persiapan mandiri (halaman penuh, bukan modal) ----
   if (phase === "preparing") {
     return (
-      <PreparationScreen
-        title={fileName ? `Persiapan: ${fileName}` : "Persiapan Sesi Presentasi"}
-        subtitle="Periksa kesiapan kamera dan mikrofon Anda sebelum memulai presentasi slide."
-        camStream={rec.camStreamRef.current}
-        micStream={rec.micStreamRef.current}
-        cameraReady={rec.visualState !== "failed" && visualWanted}
-        voiceReady={!rec.noMic}
-        simulationReady={Boolean(deck && deck.slides.length > 0)}
-        skeletonEnabled={skeletonWanted && skeletonAllowed}
-        starting={starting}
-        startNote={startNote}
-        onStart={() => void startOfficialSession()}
-        onCancel={() => setPhase("setup")}
-      />
+      <>
+        <PreparationScreen
+          title={fileName ? `Persiapan: ${fileName}` : "Persiapan Sesi Presentasi"}
+          subtitle="Periksa kesiapan kamera dan mikrofon Anda sebelum memulai presentasi slide."
+          camStream={rec.camStreamRef.current}
+          micStream={rec.micStreamRef.current}
+          cameraReady={rec.visualState !== "failed" && visualWanted}
+          voiceReady={!rec.noMic}
+          simulationReady={Boolean(deck && deck.slides.length > 0)}
+          skeletonEnabled={skeletonWanted && skeletonAllowed}
+          mediaPipeConsent={mediaPipeConsent}
+          onToggleMediaPipeConsent={() => setConsentModalOpen(true)}
+          starting={starting}
+          startNote={startNote}
+          error={error}
+          targetPlan="premium_presentasi"
+          onStart={() => void startOfficialSession()}
+          onCancel={() => {
+            rec.releaseMedia();
+            setError(null);
+            setPhase("setup");
+          }}
+        />
+        <MediaPipeConsentModal
+          isOpen={consentModalOpen}
+          onAccept={handleConsentAccept}
+          onDeclineAudioOnly={handleConsentDeclineAudioOnly}
+          onClose={() => setConsentModalOpen(false)}
+        />
+      </>
     );
   }
 
   // ---- fase selesai (menunggu unggahan + penilaian) ----
   if (phase === "finishing") {
+    const isDraining = rec.queueStats.queued > 0 || rec.queueStats.uploading > 0;
+    const progressPercent =
+      rec.queueStats.total > 0
+        ? Math.round((rec.queueStats.done / rec.queueStats.total) * 100)
+        : 100;
+
     return (
-      <div className={`${CARD} p-10 text-center`}>
-        <p className="text-lg font-semibold">
-          {scoring ? "🧮 Menilai presentasimu…" : "⏳ Menyelesaikan sesi…"}
+      <div className={`${CARD} p-10 text-center max-w-lg mx-auto`}>
+        <div className="mb-4 inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-50 text-brand-600 shadow-sm">
+          {scoring ? (
+            <i className="bi bi-cpu text-2xl animate-pulse" />
+          ) : (
+            <i className="bi bi-cloud-arrow-up text-2xl animate-bounce" />
+          )}
+        </div>
+        <p className="text-xl font-bold tracking-tight text-slate-900">
+          {scoring ? "Menganalisis Laporan & Penilaian AI…" : "Menyimpan Seluruh Rekaman Suara…"}
         </p>
         <p className="mt-2 text-sm text-slate-500">
           {scoring
-            ? "AI sedang membandingkan narasimu dengan isi tiap slide."
-            : "Menunggu transkrip slide terakhir."}
+            ? "AI sedang membandingkan narasimu dengan isi tiap slide dan parameter non-verbal."
+            : `Mengunggah & memproses transkrip audio slide (${rec.queueStats.done}/${rec.queueStats.total || deck?.slides.length || 1})…`}
         </p>
+
+        {/* Progress bar upload audio (Task 6F-AH) */}
+        {!scoring && (
+          <div className="mt-6">
+            <div className="flex justify-between text-xs font-semibold text-slate-600 mb-1.5">
+              <span>Progres Sinkronisasi Transkrip</span>
+              <span>{progressPercent}%</span>
+            </div>
+            <div className="h-2 w-full overflow-hidden rounded-full bg-slate-100">
+              <div
+                className="h-full bg-brand-500 transition-all duration-300 rounded-full"
+                style={{ width: `${progressPercent}%` }}
+              />
+            </div>
+          </div>
+        )}
       </div>
     );
   }
@@ -465,98 +651,100 @@ export default function SessionRunner({
         </div>
       </div>
 
-      {/* Layout Grid Sesuai Wireframe Gambar 2 */}
-      <div className="grid gap-6 lg:grid-cols-[2.2fr_1fr]">
-        {/* ---- kiri: slide + navigasi + frekuensi suara masuk ---- */}
-        <div className="space-y-4">
-          <div>
-            {slidePreview}
-
-            {rec.capped && (
-              <p className="mt-3 rounded-lg bg-amber-500/10 px-3 py-2 text-xs text-amber-600">
-                Rekaman slide ini dihentikan di batas 2 menit — narasi selanjutnya di slide
-                ini tidak ikut ditranskrip. Lanjut ke slide berikutnya ya.
-              </p>
-            )}
+      {/* Layout Grid Sesuai Mockup 3: PPT Kiri Lebar + Kamera Kanan */}
+      <div className="grid gap-6 md:grid-cols-12 items-stretch">
+        {/* ================= KOLOM KIRI: PPT SLIDE PREVIEW (DOMINAN) ================= */}
+        <div className="md:col-span-8 flex flex-col justify-center">
+          <div className="overflow-hidden rounded-xl border border-slate-200/80 bg-white p-3 md:p-4 shadow-sm">
+            <div className="w-full overflow-hidden rounded-xl bg-slate-100 flex items-center justify-center min-h-[300px]">
+              {slidePreview}
+            </div>
             {rec.failedUploads > 0 && (
-              <p className="mt-3 rounded-lg bg-rose-500/10 px-3 py-2 text-xs text-rose-500">
-                {rec.failedUploads} segmen gagal terkirim — transkrip slide itu akan kosong
-                di hasil.
+              <p className="mt-2 text-xs text-rose-500 font-medium">
+                {rec.failedUploads} segmen audio slide gagal terkirim.
               </p>
             )}
+          </div>
+        </div>
 
-            <div className="mt-4 flex items-center justify-between">
-              <p className="text-xs font-semibold text-slate-400">
-                Slide {index + 1} dari {deck?.slides.length}
-              </p>
+        {/* ================= KOLOM KANAN: KAMERA & AKSI SLIDE ================= */}
+        <div className="md:col-span-4 flex flex-col">
+          <div className="flex h-full flex-col justify-between rounded-xl border border-slate-200/80 bg-white p-5 md:p-6 shadow-sm min-h-[300px]">
+            <div>
+              <div className="mb-3 flex items-center justify-between border-b border-slate-100 pb-2.5">
+                <p className="text-xs font-bold uppercase tracking-wider text-slate-400">
+                  Kamera
+                </p>
+                <span className="text-xs font-bold text-brand-600">
+                  Slide {index + 1} / {totalSlidesCount}
+                </span>
+              </div>
+
+              {rec.visualState === "on" ? (
+                <div className="relative aspect-video w-full overflow-hidden rounded-xl border border-slate-800 bg-slate-950 shadow-sm">
+                  {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+                  <video
+                    ref={previewRef}
+                    muted
+                    playsInline
+                    autoPlay
+                    className="h-full w-full -scale-x-100 object-cover"
+                  />
+                  <canvas
+                    ref={overlayCanvasRef}
+                    className="pointer-events-none absolute inset-0 h-full w-full -scale-x-100 object-cover"
+                  />
+
+                  <div className="absolute top-2.5 left-2.5 right-2.5 flex items-center justify-between pointer-events-none">
+                    <span className="flex items-center gap-1.5 rounded-full bg-slate-950/70 backdrop-blur-sm px-2.5 py-0.5 text-[10px] font-bold text-rose-400 border border-slate-700/60 shadow-sm">
+                      <span className="h-1.5 w-1.5 rounded-full bg-rose-500 animate-pulse" />
+                      <span>REC {rec.mmss}</span>
+                    </span>
+
+                    {skeletonWanted && skeletonAllowed && (
+                      <span className="rounded-md bg-purple-600/90 px-2 py-0.5 text-[9px] font-bold text-white shadow-sm">
+                        Skeleton ON
+                      </span>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div className="flex aspect-video w-full flex-col items-center justify-center rounded-xl border border-dashed border-slate-300 bg-slate-50 p-4 text-center text-slate-400">
+                  <i className="bi bi-camera-video-off text-2xl mb-1 text-slate-400" />
+                  <p className="text-[11px] font-medium">Kamera tidak aktif</p>
+                </div>
+              )}
+
+              {rec.capped && (
+                <p className="mt-3 rounded-lg bg-amber-50 p-2.5 text-xs text-amber-700 border border-amber-200">
+                  Batas waktu slide 2 menit tercapai. Silakan lanjutkan ke slide berikutnya.
+                </p>
+              )}
+            </div>
+
+            {/* Tombol Aksi Navigasi Slide */}
+            <div className="mt-6 pt-4 border-t border-slate-100">
               {isLast ? (
                 <button
+                  type="button"
                   onClick={() => void finish()}
-                  className="rounded-xl bg-brand-500 px-6 py-3 text-sm font-semibold text-white shadow-lg shadow-brand-500/25 transition hover:bg-brand-600"
+                  className="w-full rounded-xl bg-brand-500 hover:bg-brand-600 text-white font-bold py-3.5 px-6 text-sm shadow-md shadow-brand-500/20 transition active:scale-95 flex items-center justify-center gap-2"
                 >
-                  ✅ Selesaikan Presentasi
+                  <i className="bi bi-check-circle-fill"></i>
+                  <span>Selesaikan Presentasi</span>
                 </button>
               ) : (
                 <button
+                  type="button"
                   onClick={nextSlide}
-                  className="rounded-xl bg-brand-500 px-6 py-3 text-sm font-semibold text-white shadow-lg shadow-brand-500/25 transition hover:bg-brand-600"
+                  className="w-full rounded-xl bg-brand-500 hover:bg-brand-600 text-white font-bold py-3.5 px-6 text-sm shadow-md shadow-brand-500/20 transition active:scale-95 flex items-center justify-center gap-2"
                 >
-                  Slide Berikutnya →
+                  <span>Slide Berikutnya</span>
+                  <i className="bi bi-arrow-right"></i>
                 </button>
               )}
             </div>
           </div>
-
-          {/* Kotak Bawah Kiri: Frekuensi Suara Masuk (Wireframe Gambar 2) */}
-          {!rec.noMic && (
-            <div className="rounded-xl border border-slate-200 bg-surface-2 p-3.5 shadow-sm">
-              <div className="flex items-center justify-between mb-2">
-                <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
-                  🎙️ Frekuensi Suara Masuk
-                </p>
-                <span className="text-[10px] text-emerald-600 font-semibold">● Audio Live</span>
-              </div>
-              <VoiceFrequency stream={rec.micStreamRef.current} variant="inline" />
-            </div>
-          )}
-        </div>
-
-        {/* ---- kanan: presenter view + live cadence HUD ---- */}
-        <div className="space-y-4">
-          {rec.visualState === "on" && (
-            <div className="rounded-xl border border-border bg-surface-2 p-3">
-              <p className="flex items-center justify-between text-[10px] font-bold uppercase tracking-widest text-slate-400">
-                Presenter View
-                {skeletonWanted && skeletonAllowed && (
-                  <span className="rounded-full bg-brand-500/10 px-2 py-0.5 text-[9px] font-semibold text-brand-600">
-                    Kerangka Aktif
-                  </span>
-                )}
-              </p>
-              <div className="relative mt-2">
-                {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
-                <video
-                  ref={previewRef}
-                  muted
-                  playsInline
-                  className="w-full -scale-x-100 rounded-lg border border-border object-cover"
-                />
-                <canvas
-                  ref={overlayCanvasRef}
-                  className="pointer-events-none absolute inset-0 h-full w-full -scale-x-100 object-cover"
-                />
-                <span className="absolute bottom-2 left-2 flex items-center gap-1 rounded-full bg-rose-500/90 px-2 py-0.5 text-[10px] font-semibold text-white shadow-sm">
-                  <span className="h-1.5 w-1.5 rounded-full bg-white" /> Presenting
-                </span>
-              </div>
-              <p className="mt-2 text-[11px] leading-snug text-slate-400">
-                📷 Dianalisis di browser — tidak direkam &amp; tidak dikirim.
-              </p>
-            </div>
-          )}
-
-          {/* Fitur Update 19: Live Cadence / Realtime WPS Tracker HUD */}
-          <LiveCadenceHUD cadence={rec.cadence} />
         </div>
       </div>
 
@@ -566,6 +754,14 @@ export default function SessionRunner({
         </Link>{" "}
         · tiap ganti slide, narasinya langsung ditranskrip di latar belakang
       </p>
+
+      {activeSessionRecovery && (
+        <ActiveSessionModal
+          session={activeSessionRecovery}
+          onClose={() => setActiveSessionRecovery(null)}
+          onAbandonComplete={() => setActiveSessionRecovery(null)}
+        />
+      )}
     </div>
   );
 }

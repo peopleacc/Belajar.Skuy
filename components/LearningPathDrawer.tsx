@@ -87,9 +87,9 @@ export default function LearningPathDrawer({
             type="button"
             onClick={onClose}
             aria-label="Tutup learning path"
-            className="shrink-0 text-slate-400 transition hover:text-slate-700"
+            className="flex h-7 w-7 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
           >
-            ✕
+            <i className="bi bi-x-lg text-sm"></i>
           </button>
         </div>
 
@@ -116,20 +116,24 @@ export default function LearningPathDrawer({
                   >
                     Bab {ch.number}
                   </p>
-                  <span
-                    className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${
-                      ch.state === "completed"
-                        ? "bg-emerald-50 text-emerald-600"
-                        : ch.state === "generate"
-                          ? "bg-amber-50 text-amber-600"
-                          : locked
-                            ? "bg-slate-100 text-slate-400"
-                            : "bg-brand-50 text-brand-600"
-                    }`}
-                  >
-                    {ch.state === "completed" ? "✓ " : locked ? "🔒 " : ""}
-                    {STATE_LABEL[ch.state]}
-                  </span>
+                    <span
+                      className={`inline-flex items-center shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                        ch.state === "completed"
+                          ? "bg-emerald-50 text-emerald-600"
+                          : ch.state === "generate"
+                            ? "bg-amber-50 text-amber-600"
+                            : locked
+                              ? "bg-slate-100 text-slate-400"
+                              : "bg-brand-50 text-brand-600"
+                      }`}
+                    >
+                      {ch.state === "completed" ? (
+                        <i className="bi bi-check-lg mr-1 text-emerald-600"></i>
+                      ) : locked ? (
+                        <i className="bi bi-lock-fill mr-1 text-slate-400"></i>
+                      ) : null}
+                      {STATE_LABEL[ch.state]}
+                    </span>
                 </div>
                 <p
                   className={`mt-0.5 truncate text-sm font-semibold ${

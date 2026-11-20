@@ -1,9 +1,12 @@
-// Fitur Y/Z — SATU sumber kebenaran untuk status kunci/buka bab (gate sekuensial Fitur K).
+// Fitur Y/Z & Track 13 — SATU sumber kebenaran untuk status bab kursus.
 //
-// Sebelumnya logic ini cuma ada inline di `courses/[id]/page.tsx`, sementara
-// `learn/[contentId]/page.tsx` tidak mengeceknya sama sekali → bab terkunci masih bisa dibuka
-// (bahkan digenerate) lewat tombol "Bab berikutnya" atau URL langsung. Diekstrak ke sini supaya
-// kedua halaman + proxy generate memakai perhitungan yang PERSIS sama.
+// Sejak Track 13 (Non-Linear Chapter Access & Arbitrary Chapter Generation):
+// Pembatasan sekuensial kaku (gate sekuensial Fitur K) dibongkar agar pengguna bebas
+// meng-generate dan mempelajari bab mana saja tanpa terhalang gembok "Bab ini belum terbuka".
+// Setiap bab dihitung secara modular:
+// - completed: materi sudah tuntas dipelajari / lulus kuis.
+// - available: materi sudah di-generate dan siap dipelajari.
+// - generate : materi belum di-generate (siap di-generate instan oleh pengguna).
 
 export type ChapterState = "locked" | "generate" | "available" | "completed";
 
@@ -56,20 +59,31 @@ export function collectCompletedContentIds(
 }
 
 /**
- * Hitung state tiap bab secara BERURUTAN: bab ke-N terbuka hanya kalau bab ke-(N-1) sudah
- * `completed`. Bab pertama selalu terjangkau.
+ * Hitung state tiap bab kursus.
+ * Track 13: Semua bab dapat diakses dan di-generate kapan saja tanpa mengunci bab
+ * berikutnya (non-linear learning). Opsi `enforceSequential` dapat diberikan jika
+ * suatu saat dibutuhkan mode sekuensial ketat.
  *
- * @param chapters urut berdasarkan `chapter_number` (ASC) — urutan array menentukan hasilnya.
+ * @param chapters urut berdasarkan `chapter_number` (ASC)
+ * @param options opsi tambahan (mis. enforceSequential)
  */
-export function computeChapterStates(chapters: ChapterStateInput[]): ChapterState[] {
-  let prevCompleted = true; // bab pertama selalu bisa diakses
+export function computeChapterStates(
+  chapters: ChapterStateInput[],
+  options?: { enforceSequential?: boolean }
+): ChapterState[] {
+  const sequential = options?.enforceSequential === true;
+  let prevCompleted = true;
+
   return chapters.map((ch) => {
     const generated = isGenerated(ch.body);
     const completed = generated && ch.completed;
-    const reachable = prevCompleted;
-    prevCompleted = completed;
 
-    if (!reachable) return "locked";
+    if (sequential) {
+      const reachable = prevCompleted;
+      prevCompleted = completed;
+      if (!reachable) return "locked";
+    }
+
     if (completed) return "completed";
     if (generated) return "available";
     return "generate";

@@ -1,13 +1,12 @@
 import Link from "next/link";
 import { createClient, supabaseConfigured } from "@/lib/supabase/server";
 
-// Halaman "My Course": tiap COURSE (modul) jadi kartu (gaya mockup). Klik kartu → learning path.
+// Halaman "My Course": tiap COURSE (modul) jadi kartu (gaya mockup). Klik kartu -> learning path.
 // Progress dihitung PER BAB (bukan per sub-bab): bar maju saat satu bab tuntas (kuis lulus),
 // dibagi TOTAL bab course — jadi bab yang belum digenerate ikut jadi penyebut (belum selesai).
 
 type Chapter = {
   id: string;
-  body: { status?: string } | null;
 };
 type Module = {
   id: string;
@@ -20,10 +19,6 @@ type Module = {
 };
 
 const PASS_SCORE = 70;
-
-function isGenerated(body: Chapter["body"]) {
-  return body != null && body.status !== "pending";
-}
 
 const HEADER_GRADIENTS = [
   "from-brand-400 to-brand-700",
@@ -42,7 +37,7 @@ export default async function MyCoursePage() {
     const [{ data: mods }, { data: attempts }] = await Promise.all([
       supabase
         .from("modules")
-        .select("id, title, description, total_chapters, created_at, image_url, contents(id, body)")
+        .select("id, title, description, total_chapters, created_at, image_url, contents(id)")
         .gt("total_chapters", 0)
         .order("created_at", { ascending: false }),
       supabase.from("quiz_attempts").select("score, quizzes(content_id)"),
@@ -59,7 +54,7 @@ export default async function MyCoursePage() {
     const totalChapters = mod.total_chapters || (mod.contents?.length ?? 0);
     let completedChapters = 0;
     for (const ch of mod.contents ?? []) {
-      if (isGenerated(ch.body) && passed.has(ch.id)) completedChapters++;
+      if (passed.has(ch.id)) completedChapters++;
     }
     const percent =
       totalChapters > 0 ? Math.round((completedChapters / totalChapters) * 100) : 0;
@@ -74,14 +69,17 @@ export default async function MyCoursePage() {
       </p>
 
       {!configured && (
-        <div className="mt-6 rounded-2xl bg-amber-50 px-5 py-4 text-sm text-amber-700">
-          ⚠ Supabase belum dikonfigurasi — isi <code className="font-mono">next/.env.local</code>.
+        <div className="mt-6 rounded-2xl bg-amber-50 border border-amber-200 px-5 py-4 text-sm text-amber-700 flex items-center gap-2">
+          <i className="bi bi-exclamation-triangle-fill text-amber-500"></i>
+          <span>Supabase belum dikonfigurasi — isi <code className="font-mono font-bold">next/.env.local</code>.</span>
         </div>
       )}
 
       {configured && modules.length === 0 ? (
-        <div className="mt-8 rounded-sm border-2 border-dashed border-slate-200 bg-white/60 px-6 py-14 text-center">
-          <p className="text-2xl">📚</p>
+        <div className="mt-8 rounded-2xl border-2 border-dashed border-slate-200 bg-white px-6 py-14 text-center">
+          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-[#283157]/5 text-2xl text-[#283157] border border-[#283157]/10">
+            <i className="bi bi-journal-bookmark-fill"></i>
+          </div>
           <p className="mt-2 font-semibold text-slate-700">Belum ada course</p>
           <p className="mx-auto mt-1 max-w-sm text-sm text-slate-400">
             Buat course pertamamu lewat{" "}
@@ -101,7 +99,7 @@ export default async function MyCoursePage() {
               <Link
                 key={mod.id}
                 href={`/dashboard/courses/${mod.id}`}
-                className="group flex flex-col overflow-hidden rounded-sm bg-white shadow-card transition hover:-translate-y-0.5 hover:shadow-lg"
+                className="group flex flex-col overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
               >
                 <div
                   className={`relative flex h-24 items-start justify-between overflow-hidden p-3 ${mod.image_url ? "" : `bg-gradient-to-br ${HEADER_GRADIENTS[mi % HEADER_GRADIENTS.length]}`
@@ -123,8 +121,9 @@ export default async function MyCoursePage() {
                     {mod.total_chapters} bab
                   </span>
                   {completed && (
-                    <span className="relative rounded-full bg-emerald-400 px-2 py-0.5 text-[10px] font-bold text-white">
-                      ✓ Selesai
+                    <span className="relative inline-flex items-center gap-1 rounded-full bg-emerald-500 px-2.5 py-0.5 text-[10px] font-bold text-white shadow-xs">
+                      <i className="bi bi-check-lg"></i>
+                      <span>Selesai</span>
                     </span>
                   )}
                   {!started && !completed && (
@@ -166,19 +165,22 @@ export default async function MyCoursePage() {
           {/* Kartu tambah course baru dengan AI */}
           <Link
             href="/dashboard/generate"
-            className="group flex flex-col justify-between rounded-sm bg-secondary p-5 text-dark shadow-card transition hover:-translate-y-0.5 hover:shadow-lg"
+            className="group flex flex-col justify-between rounded-2xl border border-indigo-100/80 bg-gradient-to-br from-white via-white to-indigo-50/40 p-6 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-[#283157]/30 hover:shadow-md"
           >
             <div>
-              <span className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-brand-500/10 text-lg text-brand-500">
+              <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-[#283157]/5 border border-[#283157]/10 text-lg text-[#283157] transition-transform duration-300 group-hover:scale-105">
                 <i className="bi bi-stars"></i>
               </span>
-              <h3 className="mt-3 font-bold leading-snug">Ingin Menambah Course Baru?</h3>
-              <p className="mt-1 text-xs leading-relaxed text-light-muted">
+              <h3 className="mt-3.5 text-sm font-extrabold text-[#283157] leading-snug">
+                Ingin Menambah Course Baru?
+              </h3>
+              <p className="mt-1.5 text-xs text-slate-500 leading-relaxed">
                 Berikan topik ke AI untuk menyusun course baru sesuai kebutuhanmu.
               </p>
             </div>
-            <span className="mt-4 inline-flex items-center justify-center gap-1 rounded-xl bg-accent px-4 py-2 text-xs font-semibold text-white transition group-hover:bg-brand-600">
-              + Tambah dengan AI
+            <span className="mt-5 inline-flex w-full items-center justify-center gap-1.5 rounded-xl bg-[#283157] px-4 py-2.5 text-xs font-bold text-white shadow-xs transition duration-200 group-hover:bg-[#1f2644] active:scale-95">
+              <i className="bi bi-plus-lg text-xs"></i>
+              <span>Tambah dengan AI</span>
             </span>
           </Link>
         </div>

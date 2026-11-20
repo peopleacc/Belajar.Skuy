@@ -1,13 +1,17 @@
-// Fitur BC & Pembaruan Update 19 — Analisis Visual MURNI CLIENT-SIDE di Browser.
+// Fitur BC, Pembaruan Update 19 & Task 2A-MO / 2B-HS — Analisis Visual MURNI CLIENT-SIDE di Browser.
 //
-// Menerapkan seluruh spesifikasi matematis dari `formula-web.md`:
+// Menerapkan seluruh spesifikasi matematis dari `formula-web.md` dengan optimasi performa tinggi:
 // 1. GazeDynamicsEngine: Koordinat iris rongga mata (Eye-Socket Invariant), titik konjugat P_eye,
 //    filter deadzone 0.012, saccade 0.038, refractory debounce 200ms, sliding buffers (3s, 5s, 60s),
 //    klasifikasi (Kecurigaan Membaca Teks, Tidak Fokus, Memperhatikan Audiens, Fokus, Netral).
-// 2. HandKinematicsEngine: Normalisasi lebar bahu s_shoulder, kecepatan instan vt,
-//    ring-buffer 15 frame, rasio jeda diam (pause ratio), rasio keterarahan Rd,
-//    sikap terbuka (spread >= 0.35), bersedekap (crossed arms), tangan di bawah pinggul.
-// 3. Canvas HUD Renderer: Visual kerangka pose tubuh, sendi tangan, dan retikel iris siber.
+// 2. Simple Macro Hand Kinematics (Task 2B-HS):
+//    Mengeliminasi model HandLandmarker 21-sendi jari mandiri (~15MB & high CPU), beralih ke deteksi
+//    kehadiran tangan makro memanfaatkan koordinat pergelangan tangan (wrist #15 & #16) dan jari dari
+//    PoseLandmarkerLite, dinormalisasi terhadap lebar bahu s_shoulder.
+// 3. Performance Optimizer (Task 2A-MO):
+//    - Offscreen downscaled canvas 320x240 untuk komputasi inferensi ML hemat CPU/GPU hingga 50-70%.
+//    - Frame rate throttling terkontrol pada interval ~85-100ms (10–12 FPS).
+// 4. Canvas HUD Renderer: Visual kerangka tubuh, indikator tangan makro siber, dan retikel iris mata.
 //
 // Zero Server GPU/CPU — 100% privasi di browser klien.
 
@@ -48,7 +52,6 @@ const WASM_PATH = "/mediapipe/wasm";
 const MODELS = {
   face: "/mediapipe/models/face_landmarker.task",
   pose: "/mediapipe/models/pose_landmarker_lite.task",
-  hand: "/mediapipe/models/hand_landmarker.task",
 };
 
 const BUCKET_MS = 10_000;
@@ -56,7 +59,6 @@ const BUCKET_MS = 10_000;
 type Landmarkers = {
   face: import("@mediapipe/tasks-vision").FaceLandmarker;
   pose: import("@mediapipe/tasks-vision").PoseLandmarker;
-  hand: import("@mediapipe/tasks-vision").HandLandmarker;
 };
 
 type Bucket = {
@@ -85,8 +87,14 @@ export class VisualAnalyzer {
   private lm: Landmarkers;
   private running = false;
   private timer: ReturnType<typeof setTimeout> | null = null;
-  private intervalMs = 100; // ~10fps
+  private intervalMs = 90; // ~10-12 FPS
   private detectEma = 0;
+
+  // Offscreen Downscaled Canvas (Task 2A-MO: 320x240 untuk inferensi ringan hemat daya)
+  private offscreenCanvas: HTMLCanvasElement | null = null;
+  private offscreenCtx: CanvasRenderingContext2D | null = null;
+  private lastDetectTimestamp = 0;
+  private isProcessing = false;
 
   // Canvas Overlay Renderer (Opsional untuk Skeleton & HUD)
   private overlayCanvas: HTMLCanvasElement | null = null;
@@ -114,10 +122,9 @@ export class VisualAnalyzer {
     neutral: 0,
   };
 
-  // ── Hand Kinematics Engine State ──
-  private prevPalm: { x: number; y: number } | null = null;
-  private prevTip: { x: number; y: number } | null = null;
-  private handRingBuffer: { vt: number; palm: { x: number; y: number } }[] = [];
+  // ── Macro Hand Kinematics Engine State (Task 2B-HS) ──
+  private prevHandPos: { x: number; y: number } | null = null;
+  private handRingBuffer: { vt: number; pos: { x: number; y: number } }[] = [];
   private currentHandState: HandClassification = "static";
 
   private handCounts: Record<HandClassification, number> = {
@@ -133,24 +140,29 @@ export class VisualAnalyzer {
   private postureOk = 0;
   private smileVals: number[] = [];
 
-  // Landmark caching untuk render frame
+  // Landmark caching untuk render frame overlay
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private lastFaceLandmarks: any = null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private lastPoseLandmarks: any = null;
-  private lastHandLandmarks: any = null;
 
   private constructor(video: HTMLVideoElement, lm: Landmarkers) {
     this.video = video;
     this.lm = lm;
   }
 
+  /**
+   * Inisialisasi model MediaPipe Vision.
+   * Mengeliminasi unduhan hand_landmarker.task untuk menghemat ~15 MB memori & CPU (Task 2A-MO).
+   */
   static async create(video: HTMLVideoElement): Promise<VisualAnalyzer> {
     suppressBenignWasmLogs();
-    const { FilesetResolver, FaceLandmarker, PoseLandmarker, HandLandmarker } = await import(
+    const { FilesetResolver, FaceLandmarker, PoseLandmarker } = await import(
       "@mediapipe/tasks-vision"
     );
     const fileset = await FilesetResolver.forVisionTasks(WASM_PATH);
     const common = { runningMode: "VIDEO" as const };
-    const [face, pose, hand] = await Promise.all([
+    const [face, pose] = await Promise.all([
       FaceLandmarker.createFromOptions(fileset, {
         baseOptions: { modelAssetPath: MODELS.face },
         ...common,
@@ -163,13 +175,8 @@ export class VisualAnalyzer {
         ...common,
         numPoses: 1,
       }),
-      HandLandmarker.createFromOptions(fileset, {
-        baseOptions: { modelAssetPath: MODELS.hand },
-        ...common,
-        numHands: 2,
-      }),
     ]);
-    return new VisualAnalyzer(video, { face, pose, hand });
+    return new VisualAnalyzer(video, { face, pose });
   }
 
   /** Sambungkan canvas overlay dan aktifkan/nonaktifkan kerangka */
@@ -202,8 +209,7 @@ export class VisualAnalyzer {
     this.isShiftingNow = false;
     this.gazeCounts = { reading: 0, unfocused: 0, audience: 0, focus: 0, neutral: 0 };
 
-    this.prevPalm = null;
-    this.prevTip = null;
+    this.prevHandPos = null;
     this.handRingBuffer = [];
     this.currentHandState = "static";
     this.handCounts = { natural: 0, static: 0, flailing: 0, crossed: 0, below_hip: 0 };
@@ -220,14 +226,16 @@ export class VisualAnalyzer {
     const focusRatio = this.gazeCounts.focus / totalFrames;
     const audienceRatio = this.gazeCounts.audience / totalFrames;
     const unfocusedRatio = this.gazeCounts.unfocused / totalFrames;
-    const readingSuspicion = this.gazeCounts.reading > 0 || (this.gazeCounts.reading / totalFrames) > 0.4;
+    const readingSuspicion =
+      this.gazeCounts.reading > 0 || this.gazeCounts.reading / totalFrames > 0.4;
     const penaltyReading = readingSuspicion ? 2.5 : 0;
 
     // Skor Dinamika Bola Mata (formula-web.md §4.1, skala 1.0 - 10.0 dikali 10)
-    const rawEye = 3.0 + 4.5 * focusRatio + 3.0 * audienceRatio - 4.5 * unfocusedRatio - penaltyReading;
+    const rawEye =
+      3.0 + 4.5 * focusRatio + 3.0 * audienceRatio - 4.5 * unfocusedRatio - penaltyReading;
     const eyeScore = Math.round(Math.min(10.0, Math.max(1.0, rawEye)) * 10);
 
-    // Rasio Tangan
+    // Rasio Tangan (Macro Hand Presence)
     const naturalRatio = this.handCounts.natural / totalFrames;
     const staticRatio = this.handCounts.static / totalFrames;
     const crossedRatio = this.handCounts.crossed / totalFrames;
@@ -278,10 +286,11 @@ export class VisualAnalyzer {
     try {
       this.lm.face.close();
       this.lm.pose.close();
-      this.lm.hand.close();
     } catch {
       /* ignore cleanup */
     }
+    this.offscreenCanvas = null;
+    this.offscreenCtx = null;
   }
 
   private loop() {
@@ -297,7 +306,8 @@ export class VisualAnalyzer {
     }
     const cost = performance.now() - t0;
     this.detectEma = this.detectEma === 0 ? cost : this.detectEma * 0.8 + cost * 0.2;
-    this.intervalMs = this.detectEma > 180 ? 300 : this.detectEma > 90 ? 150 : 90;
+    // Frame Throttling: Cap interval minimal di 85ms (~11-12 FPS) untuk efisiensi CPU (Task 2A-MO)
+    this.intervalMs = Math.max(85, Math.min(220, Math.round(this.detectEma * 1.4)));
     this.timer = setTimeout(() => this.loop(), this.intervalMs);
   }
 
@@ -317,205 +327,245 @@ export class VisualAnalyzer {
   }
 
   private sample(ts: number) {
-    if (this.video.readyState < 2) return;
+    if (this.video.readyState < 2 || this.isProcessing) return;
+
+    // Frame Throttling Guard
+    const now = performance.now();
+    if (now - this.lastDetectTimestamp < 80) return;
+    this.lastDetectTimestamp = now;
+
     const b = this.bucket();
     this.frames += 1;
     b.frames += 1;
 
-    // ── 1. MediaPipe Vision Tasks Inferences ──
-    const faceResult = this.lm.face.detectForVideo(this.video, ts);
-    const poseResult = this.lm.pose.detectForVideo(this.video, ts);
-    const handResult = this.lm.hand.detectForVideo(this.video, ts);
+    // ── Offscreen Downscaled Canvas (320x240) — Task 2A-MO ──
+    if (!this.offscreenCanvas) {
+      this.offscreenCanvas = document.createElement("canvas");
+      this.offscreenCanvas.width = 320;
+      this.offscreenCanvas.height = 240;
+      this.offscreenCtx = this.offscreenCanvas.getContext("2d", { willReadFrequently: true });
+    }
 
-    this.lastFaceLandmarks = faceResult.faceLandmarks?.[0] ?? null;
-    this.lastPoseLandmarks = poseResult.landmarks?.[0] ?? null;
-    this.lastHandLandmarks = handResult.landmarks ?? null;
+    if (this.offscreenCtx && this.video.videoWidth > 0 && this.video.videoHeight > 0) {
+      this.offscreenCtx.drawImage(this.video, 0, 0, 320, 240);
+    }
 
-    const now = performance.now();
+    const inputSource = this.offscreenCanvas ?? this.video;
+    this.isProcessing = true;
 
-    // ── 2. GAZE DYNAMICS ENGINE (formula-web.md §2) ──
-    const fl = this.lastFaceLandmarks;
-    if (fl && fl[33] && fl[133] && fl[159] && fl[145] && fl[468] && fl[263] && fl[362] && fl[386] && fl[374] && fl[473]) {
-      // Mata Kanan (Right Eye Canthi & Iris 468)
-      const wR = Math.abs(fl[133].x - fl[33].x) || 1e-5;
-      const hR = Math.abs(fl[145].y - fl[159].y) || 1e-5;
-      const relXR = (fl[468].x - fl[33].x) / wR;
-      const relYR = (fl[468].y - fl[159].y) / hR;
+    try {
+      // ── 1. MediaPipe Vision Tasks Inferences (Face & Pose Lite Saja) ──
+      const faceResult = this.lm.face.detectForVideo(inputSource, ts);
+      const poseResult = this.lm.pose.detectForVideo(inputSource, ts);
 
-      // Mata Kiri (Left Eye Canthi & Iris 473)
-      const wL = Math.abs(fl[263].x - fl[362].x) || 1e-5;
-      const hL = Math.abs(fl[374].y - fl[386].y) || 1e-5;
-      const relXL = (fl[473].x - fl[362].x) / wL;
-      const relYL = (fl[473].y - fl[386].y) / hL;
+      this.lastFaceLandmarks = faceResult.faceLandmarks?.[0] ?? null;
+      this.lastPoseLandmarks = poseResult.landmarks?.[0] ?? null;
 
-      // Posisi Konjugat P_eye(t)
-      const currEyePos = {
-        x: (relXR + relXL) / 2,
-        y: (relYR + relYL) / 2,
-      };
+      // ── 2. GAZE DYNAMICS ENGINE (formula-web.md §2) ──
+      const fl = this.lastFaceLandmarks;
+      if (
+        fl &&
+        fl[33] &&
+        fl[133] &&
+        fl[159] &&
+        fl[145] &&
+        fl[468] &&
+        fl[263] &&
+        fl[362] &&
+        fl[386] &&
+        fl[374] &&
+        fl[473]
+      ) {
+        // Mata Kanan (Right Eye Canthi & Iris 468)
+        const wR = Math.abs(fl[133].x - fl[33].x) || 1e-5;
+        const hR = Math.abs(fl[145].y - fl[159].y) || 1e-5;
+        const relXR = (fl[468].x - fl[33].x) / wR;
+        const relYR = (fl[468].y - fl[159].y) / hR;
 
-      if (this.prevEyePos) {
-        const deltaP = Math.hypot(currEyePos.x - this.prevEyePos.x, currEyePos.y - this.prevEyePos.y);
-        // Filter Deadzone 0.012
-        const deltaPActive = Math.max(0.0, deltaP - 0.012);
-        // Ambang Saccade 0.038
-        this.isShiftingNow = deltaPActive >= 0.038;
+        // Mata Kiri (Left Eye Canthi & Iris 473)
+        const wL = Math.abs(fl[263].x - fl[362].x) || 1e-5;
+        const hL = Math.abs(fl[374].y - fl[386].y) || 1e-5;
+        const relXL = (fl[473].x - fl[362].x) / wL;
+        const relYL = (fl[473].y - fl[386].y) / hL;
 
-        if (this.isShiftingNow) {
-          // Debounce Refractory 200ms
-          if (now - this.lastShiftTimestamp > 200) {
-            this.shiftEvents.push({ timestamp: now, displacement: deltaPActive });
-            this.lastShiftTimestamp = now;
-            this.totalShiftCount += 1;
-            this.lastMovementTimestamp = now;
+        // Posisi Konjugat P_eye(t)
+        const currEyePos = {
+          x: (relXR + relXL) / 2,
+          y: (relYR + relYL) / 2,
+        };
+
+        if (this.prevEyePos) {
+          const deltaP = Math.hypot(
+            currEyePos.x - this.prevEyePos.x,
+            currEyePos.y - this.prevEyePos.y
+          );
+          // Filter Deadzone 0.012
+          const deltaPActive = Math.max(0.0, deltaP - 0.012);
+          // Ambang Saccade 0.038
+          this.isShiftingNow = deltaPActive >= 0.038;
+
+          if (this.isShiftingNow) {
+            // Debounce Refractory 200ms
+            if (now - this.lastShiftTimestamp > 200) {
+              this.shiftEvents.push({ timestamp: now, displacement: deltaPActive });
+              this.lastShiftTimestamp = now;
+              this.totalShiftCount += 1;
+              this.lastMovementTimestamp = now;
+            }
           }
         }
-      }
-      this.prevEyePos = currEyePos;
+        this.prevEyePos = currEyePos;
 
-      // Durasi diam tanpa pergeseran aktif
-      const staticDurationSec = (now - this.lastMovementTimestamp) / 1000;
+        // Durasi diam tanpa pergeseran aktif
+        const staticDurationSec = (now - this.lastMovementTimestamp) / 1000;
 
-      // Bersihkan riwayat melebihi 60 detik
-      this.shiftEvents = this.shiftEvents.filter((ev) => now - ev.timestamp <= 60000);
+        // Bersihkan riwayat melebihi 60 detik
+        this.shiftEvents = this.shiftEvents.filter((ev) => now - ev.timestamp <= 60000);
 
-      // Window counts: 3s, 5s, 60s
-      const n3s = this.shiftEvents.filter((ev) => now - ev.timestamp <= 3000).length;
-      const n5s = this.shiftEvents.filter((ev) => now - ev.timestamp <= 5000).length;
-      const n60s = this.shiftEvents.length;
+        // Window counts: 3s, 5s, 60s
+        const n3s = this.shiftEvents.filter((ev) => now - ev.timestamp <= 3000).length;
+        const n5s = this.shiftEvents.filter((ev) => now - ev.timestamp <= 5000).length;
+        const n60s = this.shiftEvents.length;
 
-      // Pohon Keputusan Klasifikasi (formula-web.md §2.4)
-      if (staticDurationSec >= 300) {
-        this.currentGazeState = "reading"; // Kecurigaan membaca teks
-      } else if (n3s >= 10) {
-        this.currentGazeState = "unfocused"; // Tidak fokus / gerak sangat cepat
-      } else if (n5s >= 5) {
-        this.currentGazeState = "audience"; // Memperhatikan audiens
-      } else if (n60s <= 2) {
-        this.currentGazeState = "focus"; // Fokus tenang
-      } else {
-        this.currentGazeState = "neutral";
-      }
+        // Pohon Keputusan Klasifikasi (formula-web.md §2.4)
+        if (staticDurationSec >= 300) {
+          this.currentGazeState = "reading"; // Kecurigaan membaca teks
+        } else if (n3s >= 10) {
+          this.currentGazeState = "unfocused"; // Tidak fokus / gerak sangat cepat
+        } else if (n5s >= 5) {
+          this.currentGazeState = "audience"; // Memperhatikan audiens
+        } else if (n60s <= 2) {
+          this.currentGazeState = "focus"; // Fokus tenang
+        } else {
+          this.currentGazeState = "neutral";
+        }
 
-      this.gazeCounts[this.currentGazeState] += 1;
-      b.gazeCounts[this.currentGazeState] += 1;
-    }
-
-    // Variasi Ekspresi (Smile Blendshapes)
-    const shapes = faceResult.faceBlendshapes?.[0]?.categories;
-    if (shapes) {
-      const smileL = shapes.find((c) => c.categoryName === "mouthSmileLeft")?.score ?? 0;
-      const smileR = shapes.find((c) => c.categoryName === "mouthSmileRight")?.score ?? 0;
-      this.smileVals.push((smileL + smileR) / 2);
-    }
-
-    // ── 3. POSTURE EVALUATION & SKELETON (formula-web.md §3.4) ──
-    const pl = this.lastPoseLandmarks;
-    let sShoulder = 0.25; // default fallback
-    let isCrossed = false;
-    let isHandsBelowHip = false;
-    let isOpenSpread = false;
-
-    if (pl && pl[11] && pl[12] && pl[0]) {
-      this.poseSeen += 1;
-      const l = pl[11], r = pl[12], nose = pl[0];
-      sShoulder = Math.hypot(l.x - r.x, l.y - r.y) || 0.25;
-
-      const tiltDeg = Math.abs((Math.atan2(Math.abs(l.y - r.y), Math.abs(l.x - r.x) || 1e-5) * 180) / Math.PI);
-      const headOff = Math.abs(nose.x - (l.x + r.x) / 2) / sShoulder;
-      if (tiltDeg <= 12 && headOff <= 0.35) {
-        this.postureOk += 1;
-        b.postureOk += 1;
+        this.gazeCounts[this.currentGazeState] += 1;
+        b.gazeCounts[this.currentGazeState] += 1;
       }
 
-      // Evaluasi Postur Lengan Bersedekap & Bawah Pinggul
-      if (pl[15] && pl[16] && pl[23] && pl[24]) {
-        const dCrossL = Math.hypot(pl[15].x - r.x, pl[15].y - r.y) / sShoulder;
-        const dCrossR = Math.hypot(pl[16].x - l.x, pl[16].y - l.y) / sShoulder;
-        isCrossed = dCrossL < 0.35 && dCrossR < 0.35;
-
-        const hipY = (pl[23].y + pl[24].y) / 2;
-        isHandsBelowHip = pl[15].y > hipY && pl[16].y > hipY;
-
-        const wristDist = Math.hypot(pl[15].x - pl[16].x, pl[15].y - pl[16].y);
-        isOpenSpread = wristDist / sShoulder >= 0.35;
-      }
-    }
-
-    // ── 4. HAND KINEMATICS ENGINE (formula-web.md §3) ──
-    const hl = this.lastHandLandmarks?.[0]; // Tangan pertama
-    if (hl && hl[0] && hl[5] && hl[9] && hl[13] && hl[17]) {
-      // Pusat telapak C_palm
-      const palmX = (hl[0].x + hl[5].x + hl[9].x + hl[13].x + hl[17].x) / 5;
-      const palmY = (hl[0].y + hl[5].y + hl[9].y + hl[13].y + hl[17].y) / 5;
-      const currPalm = { x: palmX, y: palmY };
-
-      const tip = hl[8] ? { x: hl[8].x, y: hl[8].y } : currPalm;
-
-      let vt = 0;
-      if (this.prevPalm && this.prevTip) {
-        const dPalm = Math.hypot(currPalm.x - this.prevPalm.x, currPalm.y - this.prevPalm.y);
-        const dTip = Math.hypot(tip.x - this.prevTip.x, tip.y - this.prevTip.y);
-        vt = Math.max(dPalm, 0.75 * dTip) / sShoulder;
-      }
-      this.prevPalm = currPalm;
-      this.prevTip = tip;
-
-      // Ring buffer 15 frame
-      this.handRingBuffer.push({ vt, palm: currPalm });
-      if (this.handRingBuffer.length > 15) {
-        this.handRingBuffer.shift();
+      // Variasi Ekspresi (Smile Blendshapes)
+      const shapes = faceResult.faceBlendshapes?.[0]?.categories;
+      if (shapes) {
+        const smileL = shapes.find((c) => c.categoryName === "mouthSmileLeft")?.score ?? 0;
+        const smileR = shapes.find((c) => c.categoryName === "mouthSmileRight")?.score ?? 0;
+        this.smileVals.push((smileL + smileR) / 2);
       }
 
-      // Hitung metrik keterarahan Rd & rasio jeda
-      const vAvg = this.handRingBuffer.reduce((acc, it) => acc + it.vt, 0) / this.handRingBuffer.length;
-      const pFirst = this.handRingBuffer[0].palm;
-      const pLast = this.handRingBuffer[this.handRingBuffer.length - 1].palm;
-      const dNet = Math.hypot(pLast.x - pFirst.x, pLast.y - pFirst.y);
+      // ── 3. POSTURE & MACRO HAND KINEMATICS VIA POSE (Task 2B-HS) ──
+      const pl = this.lastPoseLandmarks;
+      let sShoulder = 0.25; // default fallback
+      let isCrossed = false;
+      let isHandsBelowHip = false;
+      let isOpenSpread = false;
 
-      let dPath = 0;
-      for (let k = 1; k < this.handRingBuffer.length; k++) {
-        dPath += Math.hypot(
-          this.handRingBuffer[k].palm.x - this.handRingBuffer[k - 1].palm.x,
-          this.handRingBuffer[k].palm.y - this.handRingBuffer[k - 1].palm.y
+      if (pl && pl[11] && pl[12] && pl[0]) {
+        this.poseSeen += 1;
+        const l = pl[11],
+          r = pl[12],
+          nose = pl[0];
+        sShoulder = Math.hypot(l.x - r.x, l.y - r.y) || 0.25;
+
+        const tiltDeg = Math.abs(
+          (Math.atan2(Math.abs(l.y - r.y), Math.abs(l.x - r.x) || 1e-5) * 180) / Math.PI
         );
-      }
-      const rDirect = dNet / (dPath + 1e-6);
+        const headOff = Math.abs(nose.x - (l.x + r.x) / 2) / sShoulder;
+        if (tiltDeg <= 12 && headOff <= 0.35) {
+          this.postureOk += 1;
+          b.postureOk += 1;
+        }
 
-      // Klasifikasi Gestur Tangan
-      if (isCrossed) {
-        this.currentHandState = "crossed";
-      } else if (isHandsBelowHip) {
-        this.currentHandState = "below_hip";
-      } else if (vAvg >= 0.010 && vAvg <= 0.050 && rDirect >= 0.60 && isOpenSpread) {
-        this.currentHandState = "natural"; // Sering & Terarah (Prima)
-        b.gestureActive += 1;
-      } else if (vAvg > 0.060 || rDirect < 0.40) {
-        this.currentHandState = "flailing"; // Terlalu agresif / mengibas cepat
-      } else {
-        this.currentHandState = "static"; // Pasif / diam wajar
-      }
+        // Koordinat Pergelangan Tangan (Wrist #15 & #16) dan Pinggul (#23 & #24)
+        if (pl[15] && pl[16] && pl[23] && pl[24]) {
+          const wL = pl[15];
+          const wR = pl[16];
+          const leftVisible = (wL.visibility ?? 0.8) > 0.35;
+          const rightVisible = (wR.visibility ?? 0.8) > 0.35;
 
-      this.handCounts[this.currentHandState] += 1;
-      b.handCounts[this.currentHandState] += 1;
-    } else {
-      if (isCrossed) {
-        this.currentHandState = "crossed";
-        this.handCounts.crossed += 1;
-        b.handCounts.crossed += 1;
-      } else if (isHandsBelowHip) {
-        this.currentHandState = "below_hip";
-        this.handCounts.below_hip += 1;
-        b.handCounts.below_hip += 1;
-      } else {
-        this.currentHandState = "static";
-        this.handCounts.static += 1;
-        b.handCounts.static += 1;
+          const dCrossL = Math.hypot(wL.x - r.x, wL.y - r.y) / sShoulder;
+          const dCrossR = Math.hypot(wR.x - l.x, wR.y - l.y) / sShoulder;
+          isCrossed = leftVisible && rightVisible && dCrossL < 0.4 && dCrossR < 0.4;
+
+          const hipY = (pl[23].y + pl[24].y) / 2;
+          isHandsBelowHip =
+            (leftVisible && wL.y > hipY) || (rightVisible && wR.y > hipY);
+
+          const wristDist = Math.hypot(wL.x - wR.x, wL.y - wR.y);
+          isOpenSpread = leftVisible && rightVisible && wristDist / sShoulder >= 0.35;
+
+          // Hitung Titik Pusat Tangan Aktif (Macro Hand Presence)
+          let currHandPos: { x: number; y: number } | null = null;
+          if (leftVisible && rightVisible) {
+            currHandPos = { x: (wL.x + wR.x) / 2, y: (wL.y + wR.y) / 2 };
+          } else if (leftVisible) {
+            currHandPos = { x: wL.x, y: wL.y };
+          } else if (rightVisible) {
+            currHandPos = { x: wR.x, y: wR.y };
+          }
+
+          // Hitung Kecepatan vt & Buffer Trajektori
+          if (currHandPos) {
+            let vt = 0;
+            if (this.prevHandPos) {
+              const dPos = Math.hypot(
+                currHandPos.x - this.prevHandPos.x,
+                currHandPos.y - this.prevHandPos.y
+              );
+              vt = dPos / sShoulder;
+            }
+            this.prevHandPos = currHandPos;
+
+            this.handRingBuffer.push({ vt, pos: currHandPos });
+            if (this.handRingBuffer.length > 15) {
+              this.handRingBuffer.shift();
+            }
+
+            // Hitung Kecepatan Rata-rata vAvg & Rasio Keterarahan rDirect
+            const vAvg =
+              this.handRingBuffer.reduce((acc, it) => acc + it.vt, 0) /
+              Math.max(1, this.handRingBuffer.length);
+            const pFirst = this.handRingBuffer[0].pos;
+            const pLast = this.handRingBuffer[this.handRingBuffer.length - 1].pos;
+            const dNet = Math.hypot(pLast.x - pFirst.x, pLast.y - pFirst.y);
+
+            let dPath = 0;
+            for (let k = 1; k < this.handRingBuffer.length; k++) {
+              dPath += Math.hypot(
+                this.handRingBuffer[k].pos.x - this.handRingBuffer[k - 1].pos.x,
+                this.handRingBuffer[k].pos.y - this.handRingBuffer[k - 1].pos.y
+              );
+            }
+            const rDirect = dNet / (dPath + 1e-6);
+
+            // Klasifikasi Gestur Makro Sederhana (Task 2B-HS)
+            if (isCrossed) {
+              this.currentHandState = "crossed";
+            } else if (isHandsBelowHip) {
+              this.currentHandState = "below_hip";
+            } else if (vAvg >= 0.008 && vAvg <= 0.065 && (rDirect >= 0.5 || isOpenSpread)) {
+              this.currentHandState = "natural"; // Sering & Terarah
+              b.gestureActive += 1;
+            } else if (vAvg > 0.07 || rDirect < 0.3) {
+              this.currentHandState = "flailing"; // Terlalu cepat/acak
+            } else {
+              this.currentHandState = "static"; // Pasif / santai
+            }
+          } else {
+            if (isCrossed) this.currentHandState = "crossed";
+            else if (isHandsBelowHip) this.currentHandState = "below_hip";
+            else this.currentHandState = "static";
+          }
+
+          this.handCounts[this.currentHandState] += 1;
+          b.handCounts[this.currentHandState] += 1;
+        }
       }
+    } finally {
+      this.isProcessing = false;
     }
   }
 
-  // ── 5. HUD CANVAS OVERLAY RENDERING (formula-web.md §2.5 & §3) ──
+  // ── 4. HUD CANVAS OVERLAY RENDERING (Task 2B-HS: Clean Macro Hand & Pose HUD) ──
   private drawOverlay() {
     const canvas = this.overlayCanvas;
     if (!canvas) return;
@@ -545,13 +595,17 @@ export class VisualAnalyzer {
 
       const connections = [
         [11, 12], // Bahu
-        [11, 13], [13, 15], // Lengan Kiri
-        [12, 14], [14, 16], // Lengan Kanan
-        [11, 23], [12, 24], [23, 24], // Batang Tubuh
+        [11, 13],
+        [13, 15], // Lengan Kiri
+        [12, 14],
+        [14, 16], // Lengan Kanan
+        [11, 23],
+        [12, 24],
+        [23, 24], // Batang Tubuh
       ];
 
       for (const [p1, p2] of connections) {
-        if (pl[p1] && pl[p2] && pl[p1].visibility !== undefined && pl[p1].visibility > 0.4) {
+        if (pl[p1] && pl[p2] && (pl[p1].visibility ?? 0.8) > 0.35) {
           ctx.beginPath();
           ctx.moveTo(pl[p1].x * w, pl[p1].y * h);
           ctx.lineTo(pl[p2].x * w, pl[p2].y * h);
@@ -560,7 +614,7 @@ export class VisualAnalyzer {
       }
 
       // Titik Sendi Tubuh
-      const joints = [11, 12, 13, 14, 15, 16, 23, 24];
+      const joints = [11, 12, 13, 14, 23, 24];
       for (const j of joints) {
         if (pl[j]) {
           ctx.beginPath();
@@ -568,37 +622,35 @@ export class VisualAnalyzer {
           ctx.fill();
         }
       }
-    }
 
-    // B. Gambar Sendi Tangan (Hand Skeleton)
-    if (this.lastHandLandmarks) {
-      for (const hand of this.lastHandLandmarks) {
-        ctx.strokeStyle = "rgba(52, 211, 153, 0.8)"; // Hijau emerald
-        ctx.lineWidth = 1.8;
-        ctx.fillStyle = "#34d399";
+      // B. Gambar Indikator Tangan Makro Sederhana (Task 2B-HS)
+      // Lingkaran aksen dan cincin radar di pergelangan tangan #15 dan #16
+      const handJoints = [15, 16];
+      for (const hj of handJoints) {
+        const pt = pl[hj];
+        if (pt && (pt.visibility ?? 0.8) > 0.35) {
+          const hx = pt.x * w;
+          const hy = pt.y * h;
 
-        // Koneksi Jari
-        const fingerChains = [
-          [0, 1, 2, 3, 4],       // Jempol
-          [0, 5, 6, 7, 8],       // Telunjuk
-          [0, 9, 10, 11, 12],    // Tengah
-          [0, 13, 14, 15, 16],   // Manis
-          [0, 17, 18, 19, 20],   // Kelingking
-        ];
-
-        for (const chain of fingerChains) {
-          ctx.beginPath();
-          ctx.moveTo(hand[chain[0]].x * w, hand[chain[0]].y * h);
-          for (let k = 1; k < chain.length; k++) {
-            ctx.lineTo(hand[chain[k]].x * w, hand[chain[k]].y * h);
+          let handColor = "rgba(52, 211, 153, 0.85)"; // Hijau emerald (Natural)
+          if (this.currentHandState === "crossed" || this.currentHandState === "flailing") {
+            handColor = "rgba(244, 63, 94, 0.85)";
+          } else if (this.currentHandState === "below_hip") {
+            handColor = "rgba(251, 191, 36, 0.85)";
           }
-          ctx.stroke();
-        }
 
-        // Titik Sendi Jari
-        for (const pt of hand) {
+          ctx.strokeStyle = handColor;
+          ctx.lineWidth = 2.0;
+
+          // Cincin Gestur Tangan
           ctx.beginPath();
-          ctx.arc(pt.x * w, pt.y * h, 2.5, 0, 2 * Math.PI);
+          ctx.arc(hx, hy, 12, 0, 2 * Math.PI);
+          ctx.stroke();
+
+          // Titik Pusat
+          ctx.fillStyle = handColor;
+          ctx.beginPath();
+          ctx.arc(hx, hy, 4, 0, 2 * Math.PI);
           ctx.fill();
         }
       }

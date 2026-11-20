@@ -23,6 +23,8 @@ export default async function CoursePage({ params }: { params: Promise<{ id: str
   // Fitur CD — kunci pilihan soal jawab-suara kalau paket belum mencakupnya.
   const sessionUser = await getSessionUser();
   const limits = await getUserLimits(sessionUser?.planCode ?? "free");
+  const isFreePlan = !sessionUser?.planCode || sessionUser.planCode === "free";
+  const highLevelLocked = isFreePlan;
 
   const { id } = await params;
   if (!supabaseConfigured) notFound();
@@ -40,7 +42,7 @@ export default async function CoursePage({ params }: { params: Promise<{ id: str
   const [{ data: contents }, { data: attempts }, { data: progressRows }] = await Promise.all([
     supabase
       .from("contents")
-      .select("id,chapter_number,title,body,image_url")
+      .select("id,chapter_number,title,body,image_url,source_pages")
       .eq("module_id", id)
       .order("chapter_number"),
     supabase.from("quiz_attempts").select("score, submitted_at, quizzes(content_id)"),
@@ -100,6 +102,7 @@ export default async function CoursePage({ params }: { params: Promise<{ id: str
       percent: percentByContent.get(ch.id) ?? 0,
       avgScore,
       imageUrl: ch.image_url,
+      source_pages: (ch as any).source_pages ?? null,
     };
   });
 
@@ -164,6 +167,7 @@ export default async function CoursePage({ params }: { params: Promise<{ id: str
           nextHref={nextHref}
           reviewHref={reviewHref}
           voiceLocked={!limits.voicePractice}
+          highLevelLocked={highLevelLocked}
         />
       </div>
 

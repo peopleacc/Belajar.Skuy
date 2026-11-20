@@ -7,13 +7,6 @@ import { formatPrice } from "@/lib/format";
 import PaymentButton from "@/components/PaymentButton";
 import BillingCycleToggle, { type BillingCycle } from "@/components/BillingCycleToggle";
 
-/**
- * Lima kartu paket (planning-update-16), dipakai di landing (/) dan halaman harga (/pricing).
- * Dilengkapi dengan tombol geser billing cycle (1 Bulan, 6 Bulan -20%, 1 Tahun -30%).
- *
- * `currentIndex` = indeks paket yang sedang dipakai user (null kalau belum login).
- * Popular = index 3 (Premium Gabungan — "value pick" di 5 paket).
- */
 export default function PricingPlans({
   t,
   plans,
@@ -55,7 +48,7 @@ export default function PricingPlans({
 
     // Keterangan total tagihan
     const billingSummary = (() => {
-      if (isFree) return null;
+      if (isFree) return "Tanpa kartu kredit";
       if (activeCycle === 1) {
         return cycleLabels?.billedMonthly ?? "Ditagih bulanan";
       }
@@ -73,44 +66,50 @@ export default function PricingPlans({
 
     return (
       <div
-        className={`relative flex flex-col rounded-sm p-8 shadow-card ${
-          popular ? "bg-brand-500 text-white" : "bg-white"
-        } ${isCurrent ? "ring-2 ring-brand-500" : ""}`}
+        className={`relative flex flex-col justify-between rounded-3xl p-5 sm:p-6 transition-all duration-300 border ${
+          popular
+            ? "bg-[#283157] text-white border-[#283157] shadow-xl scale-[1.02] z-10"
+            : "bg-white text-slate-800 border-slate-200/80 shadow-sm hover:border-slate-300"
+        } ${isCurrent ? "ring-2 ring-[#283157]" : ""}`}
       >
+        {/* Top Badges */}
         {isCurrent ? (
-          <span className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-brand-500 px-4 py-1 text-[10px] font-bold uppercase tracking-widest text-white">
+          <span className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-emerald-500 px-3.5 py-0.5 text-[10px] font-extrabold uppercase tracking-widest text-white shadow-md flex items-center gap-1">
+            <i className="bi bi-check-circle-fill"></i>
             {t.pricing.current}
           </span>
         ) : (
           popular && (
-            <span className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-brand-700 px-4 py-1 text-[10px] font-bold uppercase tracking-widest text-white">
+            <span className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-amber-400 px-3.5 py-0.5 text-[10px] font-extrabold uppercase tracking-widest text-slate-900 shadow-md flex items-center gap-1">
+              <i className="bi bi-star-fill text-[9px]"></i>
               {t.pricing.popular}
             </span>
           )
         )}
 
-        <div className="mb-8">
+        {/* Card Header & Price */}
+        <div>
           <span
-            className={`text-xs font-bold uppercase tracking-widest ${
-              popular ? "opacity-70" : "text-slate-500"
+            className={`text-[11px] font-bold uppercase tracking-wider ${
+              popular ? "text-indigo-200" : "text-slate-400"
             }`}
           >
             {p.tier}
           </span>
-          <h3 className="mt-2 text-2xl font-bold">{p.name}</h3>
+          <h3 className="mt-1 text-lg font-extrabold tracking-tight">{p.name}</h3>
 
-          <div className="mt-5 flex items-baseline gap-2">
-            <span className="text-4xl font-extrabold tracking-tight">
+          <div className="mt-4 flex items-baseline gap-1.5">
+            <span className="text-2xl sm:text-3xl font-black tracking-tight">
               {isFree
                 ? p.price
                 : formatPrice(cycleDetail.monthlyEquivalent, harga.currency)}
             </span>
 
-            {/* Harga normal dicoret saat diskon 6 bulan / 1 tahun */}
+            {/* Crossed-out original price during 6-mo or 1-yr discounts */}
             {!isFree && cycleDetail.discounted && (
               <span
-                className={`text-base line-through ${
-                  popular ? "opacity-60" : "text-slate-400"
+                className={`text-xs line-through ${
+                  popular ? "text-indigo-200/70" : "text-slate-400"
                 }`}
               >
                 {formatPrice(
@@ -120,91 +119,109 @@ export default function PricingPlans({
               </span>
             )}
 
-            <span className={popular ? "opacity-70" : "text-slate-500"}>
+            <span
+              className={`text-xs font-semibold ${
+                popular ? "text-indigo-200" : "text-slate-400"
+              }`}
+            >
               {t.pricing.period}
             </span>
           </div>
 
-          {/* Keterangan total penagihan dan badge diskon */}
-          {!isFree && (
-            <div className="mt-2 space-y-1">
-              <p
-                className={`text-xs font-medium ${
-                  popular ? "text-white/80" : "text-slate-500"
+          {/* Billing Note & Discount Pill */}
+          <div className="mt-2 space-y-1">
+            <p
+              className={`text-xs font-medium ${
+                popular ? "text-indigo-100/80" : "text-slate-500"
+              }`}
+            >
+              {billingSummary}
+            </p>
+
+            {!isFree && cycleDetail.discounted && cycleDetail.discountLabel && (
+              <span
+                className={`inline-block rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
+                  popular
+                    ? "bg-amber-400/20 text-amber-300 border border-amber-400/30"
+                    : "bg-emerald-50 text-emerald-700 border border-emerald-200"
                 }`}
               >
-                {billingSummary}
-              </p>
+                {cycleDetail.discountLabel}
+              </span>
+            )}
+          </div>
 
-              {cycleDetail.discounted && cycleDetail.discountLabel && (
-                <span
-                  className={`inline-block rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-widest ${
-                    popular ? "bg-white/20 text-white" : "bg-emerald-50 text-emerald-600 border border-emerald-200"
+          <div
+            className={`my-4 border-t ${
+              popular ? "border-white/15" : "border-slate-100"
+            }`}
+          />
+
+          {/* Feature List */}
+          <ul className="space-y-2.5">
+            {p.features.map((f) => (
+              <li key={f} className="flex items-start gap-2 text-xs leading-relaxed">
+                <i
+                  className={`bi bi-check-circle-fill text-sm shrink-0 mt-0.5 ${
+                    popular ? "text-emerald-300" : "text-emerald-500"
                   }`}
-                >
-                  {cycleDetail.discountLabel}
+                ></i>
+                <span className={popular ? "text-white/95" : "text-slate-700 font-medium"}>
+                  {f}
                 </span>
-              )}
-            </div>
+              </li>
+            ))}
+          </ul>
+
+          {/* Excluded Features Collapsible Details */}
+          {p.disabled && p.disabled.length > 0 && (
+            <details className="mt-4 pt-3 border-t border-slate-100 text-xs group">
+              <summary className="cursor-pointer font-semibold text-slate-400 hover:text-slate-600 flex items-center justify-between list-none">
+                <span>Tidak termasuk ({p.disabled.length})</span>
+                <i className="bi bi-chevron-down text-[10px] transition-transform group-open:rotate-180"></i>
+              </summary>
+              <ul className="mt-2 space-y-1 text-[11px] text-slate-400">
+                {p.disabled.map((df) => (
+                  <li key={df} className="flex items-center gap-1.5">
+                    <i className="bi bi-dash-circle text-slate-300"></i>
+                    <span>{df}</span>
+                  </li>
+                ))}
+              </ul>
+            </details>
           )}
         </div>
 
-        <div className="mb-8 flex-1 space-y-4">
-          {p.features.map((f) => (
-            <div key={f} className="flex items-center gap-3">
-              <i
-                className={`bi bi-check-circle-fill ${
-                  popular ? "text-white/80" : "text-brand-500"
-                }`}
-              ></i>
-              <span className="text-sm">{f}</span>
-            </div>
-          ))}
-          {p.disabled.map((f) => (
-            <div key={f} className="flex items-center gap-3 opacity-40">
-              <i className="bi bi-x-circle"></i>
-              <span className="text-sm line-through">{f}</span>
-            </div>
-          ))}
+        {/* Action Button */}
+        <div className="pt-6 mt-auto">
+          <PaymentButton
+            planCode={harga?.code ?? "free"}
+            planName={p.name}
+            isLoggedIn={isLoggedIn}
+            isCurrent={isCurrent}
+            isPopular={popular}
+            ctaText={p.cta}
+            currentCtaText={t.pricing.currentCta}
+            durationMonths={activeCycle}
+          />
         </div>
-
-        <PaymentButton
-          planCode={harga?.code ?? "free"}
-          planName={p.name}
-          isLoggedIn={isLoggedIn}
-          isCurrent={isCurrent}
-          isPopular={popular}
-          ctaText={p.cta}
-          currentCtaText={t.pricing.currentCta}
-          durationMonths={activeCycle}
-        />
       </div>
     );
   }
 
-  const topPlans = t.pricing.plans.slice(0, 3);
-  const bottomPlans = t.pricing.plans.slice(3);
-
   return (
-    <div className="space-y-6">
-      {/* Tombol Geser Durasi Penagihan (1 Bulan, 6 Bulan, 1 Tahun) */}
+    <div className="space-y-8">
+      {/* Billing Cycle Toggle */}
       <BillingCycleToggle
         activeCycle={activeCycle}
         onChange={setActiveCycle}
         labels={cycleLabels}
       />
 
-      {/* Baris atas: 3 kartu */}
-      <div className="grid items-stretch gap-4 grid-cols-1 sm:grid-cols-3">
-        {topPlans.map((p, i) => (
+      {/* 5 Plan Cards Grid */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5 items-stretch">
+        {t.pricing.plans.map((p, i) => (
           <PlanCard key={p.name} p={p} i={i} />
-        ))}
-      </div>
-
-      {/* Baris bawah: 2 kartu di-center */}
-      <div className="grid items-stretch gap-4 grid-cols-1 sm:grid-cols-2 sm:w-2/3 mx-auto">
-        {bottomPlans.map((p, i) => (
-          <PlanCard key={p.name} p={p} i={i + 3} />
         ))}
       </div>
     </div>

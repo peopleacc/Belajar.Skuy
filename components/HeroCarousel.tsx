@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import BrandLogo from "@/components/BrandLogo";
 import type { Dict } from "@/lib/i18n";
 
 // Rounding + shadow card DISAMAKAN PERSIS dengan card dashboard (lihat app/page.tsx).
@@ -70,7 +71,10 @@ function Slide1({ t }: { t: Dict }) {
       {/* Pratinjau UI — dibangun dari token yang sama, tanpa gambar eksternal */}
       <div className="relative hidden lg:block">
         <div className={`${CARD} p-6`}>
-          <p className="text-base font-bold">{h.mockTitle}</p>
+          <div className="flex items-center gap-2.5">
+            <BrandLogo size="sm" variant="dark" className="h-6 w-6 rounded-md shadow-xs ring-1 ring-white/10" />
+            <p className="text-base font-bold">{h.mockTitle}</p>
+          </div>
           <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-400">
             {h.mockPlaceholder}
           </div>

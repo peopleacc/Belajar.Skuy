@@ -16,6 +16,17 @@ import type { ExampleProblem, SectionNode, OverviewBlock } from "@/lib/content";
 export type { ExampleProblem, SectionNode } from "@/lib/content";
 
 /**
+ * Normalisasi teks LaTeX yang tersimpan dengan double backslash (mis. \\text, \\frac, \\sum)
+ * akibat serialisasi JSON/escape ganda agar terbaca sebagai perintah LaTeX yang sah oleh KaTeX.
+ * Pola [a-zA-Z]{2,}|{ memastikan perintah LaTeX dinormalkan tanpa merusak pemisah baris matriks
+ * (\\ yang diikuti spasi, angka, atau variabel 1 huruf).
+ */
+function cleanLatex(text: string): string {
+  if (typeof text !== "string") return text;
+  return text.replace(/\\+([a-zA-Z]{2,}|{)/g, "\\$1");
+}
+
+/**
  * Render teks (explanation, question_text, options, dll) dengan Markdown + rumus KaTeX.
  * inline=true: paragraf dirender sebagai <span> supaya aman di dalam tombol/baris.
  */
@@ -28,13 +39,14 @@ export function MathText({
   className?: string;
   inline?: boolean;
 }) {
+  const content = typeof children === "string" ? cleanLatex(children) : children;
   const md = (
     <ReactMarkdown
       remarkPlugins={[remarkMath]}
       rehypePlugins={[rehypeKatex]}
       components={inline ? { p: ({ children }) => <>{children}</> } : undefined}
     >
-      {children}
+      {content}
     </ReactMarkdown>
   );
 
@@ -68,11 +80,18 @@ function FormulaContainer({ formulas }: { formulas: string[] }) {
     <div className="rounded-2xl border border-indigo-200 bg-indigo-50/70 p-5">
       <p className="mb-3 text-xs font-bold uppercase tracking-wider text-indigo-600">∑ Rumus Terkait</p>
       <div className="space-y-2">
-        {formulas.map((f, i) => (
-          <div key={i} className="overflow-x-auto rounded-lg bg-white/80 px-4 py-2.5 text-center">
-            <MathText>{f}</MathText>
-          </div>
-        ))}
+        {formulas.map((f, i) => {
+          let formula = (f ?? "").trim();
+          // Jika rumus belum dibungkus delimiter KaTeX ($...$ atau $$...$$), bungkus dengan $$...$$
+          if (formula && !formula.startsWith("$")) {
+            formula = `$$${formula}$$`;
+          }
+          return (
+            <div key={i} className="overflow-x-auto rounded-lg bg-white/80 px-4 py-2.5 text-center">
+              <MathText>{formula}</MathText>
+            </div>
+          );
+        })}
       </div>
     </div>
   );

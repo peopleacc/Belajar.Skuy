@@ -38,10 +38,11 @@ export async function POST(request: Request) {
 
   const nextStep = Math.max(existing?.current_step ?? 0, clampedStep);
 
-  // Fitur K — tandai bab SELESAI saat langkah mencapai total (ujian lulus) → buka bab berikutnya.
+  // Task 15D-QS (F23): Endpoint progres HANYA mencatat posisi bacaan (current_step).
+  // completed_at DILARANG diterbitkan dari client via step=totalSteps.
+  // completed_at hanya diterbitkan secara sah oleh /api/quiz/submit saat kuis bab lulus (score >= 70).
   const completedAt =
-    (existing as { completed_at?: string | null } | null)?.completed_at ??
-    (nextStep >= totalSteps ? new Date().toISOString() : null);
+    (existing as { completed_at?: string | null } | null)?.completed_at ?? null;
 
   const { error } = await supabase
     .from("content_progress")

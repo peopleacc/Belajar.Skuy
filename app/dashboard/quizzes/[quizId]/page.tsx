@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { createClient, supabaseConfigured } from "@/lib/supabase/server";
 import CustomQuizRoom from "@/components/CustomQuizRoom";
 import type { AttemptRow, QuizRow } from "@/components/LearnRoom";
-import { stripEssaySecrets } from "@/lib/quiz";
+import { stripEssaySecrets, stripExamSecrets } from "@/lib/quiz";
 import { getSessionUser } from "@/lib/session";
 import { getUserLimits } from "@/lib/plans";
 
@@ -26,14 +26,19 @@ export default async function CustomQuizPage({
     .eq("id", quizId)
     .maybeSingle();
   if (!quiz) notFound();
-  // Fitur Q — kunci jawaban esai (key_points/model_answer) tidak boleh sampai ke browser.
-  const safeQuiz = { ...quiz, questions: stripEssaySecrets(quiz.questions as Record<string, unknown>[]) };
 
   const { data: attempts } = await supabase
     .from("quiz_attempts")
     .select("id, score, answers, submitted_at")
     .eq("quiz_id", quizId)
     .order("submitted_at", { ascending: false });
+
+  // Task 15D-QS (F19 & F24) — Hapus kunci PG & pembahasan pada fase ujian jika belum pernah submit attempt
+  const hasAttempted = (attempts ?? []).length > 0;
+  const safeQuestions = hasAttempted
+    ? stripEssaySecrets(quiz.questions as Record<string, unknown>[])
+    : stripExamSecrets(quiz.questions as Record<string, unknown>[]);
+  const safeQuiz = { ...quiz, questions: safeQuestions };
 
   const title =
     ((quiz.modules as unknown as { title: string } | null)?.title ?? "Kuis Kustom").replace(

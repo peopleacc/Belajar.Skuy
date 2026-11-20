@@ -3,6 +3,8 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import Image from "next/image";
+import BrandLogo from "@/components/BrandLogo";
 import { createClient, supabaseConfigured } from "@/lib/supabase/client";
 import { recordLogin } from "@/lib/loginEvents";
 import { getAppUrl } from "@/lib/url";
@@ -90,6 +92,8 @@ export default function RegisterPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -132,7 +136,6 @@ export default function RegisterPage() {
     if (!supabaseConfigured || loading || lockoutSeconds > 0) return;
     const supabase = createClient();
     const origin = getAppUrl();
-    // Parameter flow=signup menandakan pendaftaran akun baru yang sah menuju onboarding
     const redirectUrl = `${origin}/auth/callback?flow=signup&next=/onboarding`;
     await supabase.auth.signInWithOAuth({
       provider: "google",
@@ -183,6 +186,27 @@ export default function RegisterPage() {
     }
 
     setLoading(true);
+
+    // Lapisan 1 (Task 5C-RG): Pre-Registration Identity Conflict Check (/api/auth/check)
+    try {
+      const checkRes = await fetch("/api/auth/check", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: cleanEmail, username: cleanUsername }),
+      });
+
+      if (!checkRes.ok) {
+        const checkData = await checkRes.json().catch(() => ({}));
+        if (checkData.message || checkData.error) {
+          setError(checkData.message || checkData.error);
+          setLoading(false);
+          return;
+        }
+      }
+    } catch (checkErr) {
+      console.warn("Pre-registration check fallback guard", checkErr);
+    }
+
     const supabase = createClient();
 
     const { data, error: signUpError } = await supabase.auth.signUp({
@@ -201,7 +225,6 @@ export default function RegisterPage() {
         sessionStorage.setItem("auth_register_fails", String(fails));
       } catch {}
 
-      // Jika gagal 5 kali berturut-turut, aktifkan cooldown 60 detik
       if (fails >= 5) {
         const lockUntil = Date.now() + 60000;
         try {
@@ -218,7 +241,15 @@ export default function RegisterPage() {
       return;
     }
 
-    // Reset counter gagal pendaftaran
+    // Lapisan 2 (Task 5C-RG): GoTrue Anti-Email Enumeration Guard (Empty Identities)
+    if (data.user && Array.isArray(data.user.identities) && data.user.identities.length === 0) {
+      setError(
+        "Email ini sudah terdaftar di sistem kami. Jika sebelumnya Anda mendaftar dengan Google, silakan login menggunakan tombol Google di halaman Login."
+      );
+      setLoading(false);
+      return;
+    }
+
     try {
       sessionStorage.removeItem("auth_register_fails");
       sessionStorage.removeItem("auth_register_lockout");
@@ -226,254 +257,344 @@ export default function RegisterPage() {
 
     if (data.session) {
       if (data.user) await recordLogin(supabase, data.user.id);
-      // Pengguna baru diarahkan ke wizard onboarding
       router.push("/onboarding");
       router.refresh();
     } else {
-      setInfo("Pendaftaran berhasil! Silakan cek kotak masuk email Anda untuk konfirmasi akun, lalu login.");
+      setInfo("Pendaftaran berhasil! Silakan periksa kotak masuk email Anda untuk konfirmasi aktivasi akun, lalu masuk.");
       setLoading(false);
     }
   }
 
   const inputCls =
-    "w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-100 disabled:bg-slate-100 disabled:text-slate-400";
+    "h-12 w-full rounded-2xl border border-border/90 bg-surface-2 px-4 text-sm font-medium text-slate-800 outline-none transition focus:border-brand-500 focus:bg-white focus:ring-2 focus:ring-brand-500/20 disabled:bg-slate-100 disabled:text-slate-400";
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-ink-900 p-6 [background-image:radial-gradient(circle,#2a2547_1px,transparent_1px)] [background-size:24px_24px]">
-      <div className="w-full max-w-md rounded-2xl bg-white p-8 shadow-2xl md:p-10 border border-slate-100">
-        {/* Backlink ke Landing Page */}
-        <Link
-          href="/"
-          className="mb-6 inline-flex items-center gap-2 text-xs font-medium text-slate-500 transition hover:text-brand-500"
-        >
-          <i className="bi bi-arrow-left text-sm"></i>
-          Kembali ke Beranda
+    <div className="min-h-screen bg-dominant text-slate-800 transition-colors duration-300 flex flex-col justify-between">
+      {/* Top Header Bar */}
+      <header className="mx-auto flex h-20 w-full max-w-7xl items-center justify-between px-4 sm:px-6 md:px-10">
+        <Link href="/" className="group flex items-center gap-2.5">
+          <BrandLogo
+            size="md"
+            variant="dark"
+            className="rounded-xl shadow-md transition-transform duration-200 group-hover:scale-105 ring-1 ring-white/10"
+            priority
+          />
+          <span className="text-xl font-extrabold tracking-[-0.06em] text-slate-900">
+            belajar<span className="text-brand-500">.skuy</span>
+          </span>
         </Link>
 
-        <div className="mb-6 flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-500 text-lg font-bold text-white shadow-md shadow-brand-500/20">
-            <i className="bi bi-book text-xl"></i>
-          </div>
-          <div>
-            <h1 className="text-xl font-bold">
-              Buat Akun <span className="text-brand-500">belajar.skuy</span>
-            </h1>
-            <p className="text-xs text-slate-500">Gratis, langsung bisa buat kursus &amp; simulasi.</p>
-          </div>
+        <div className="flex items-center gap-4">
+          <Link
+            href="/"
+            className="inline-flex items-center gap-1.5 text-xs sm:text-sm font-semibold text-slate-600 hover:text-brand-500"
+          >
+            <i className="bi bi-arrow-left text-sm"></i>
+            <span>Kembali ke Beranda</span>
+          </Link>
         </div>
+      </header>
 
-        {/* Lockout Banner */}
-        {lockoutSeconds > 0 && (
-          <div className="mb-4 rounded-xl border border-rose-200 bg-rose-50 p-3.5 text-xs text-rose-800 shadow-sm">
-            <p className="font-bold flex items-center gap-1.5">
-              <span>⏳</span> Pendaftaran Dikunci Sementara
-            </p>
-            <p className="mt-1">
-              Terlalu banyak percobaan. Silakan tunggu{" "}
-              <span className="font-mono font-bold text-rose-900">
-                {String(Math.floor(lockoutSeconds / 60)).padStart(2, "0")}:
-                {String(lockoutSeconds % 60).padStart(2, "0")}
-              </span>{" "}
-              sebelum mencoba mendaftar kembali.
-            </p>
-          </div>
-        )}
+      {/* Main 2-Column Shell */}
+      <main className="flex-1 flex items-center justify-center px-4 py-8 sm:px-6 md:px-10">
+        <div className="grid w-full max-w-5xl overflow-hidden rounded-3xl border border-border/80 bg-white shadow-2xl transition-colors duration-300 lg:grid-cols-12 min-h-[640px]">
+          {/* Kolom Kiri: Visual Story & 3D Illustration */}
+          <div className="relative flex flex-col justify-between bg-surface-2 p-8 lg:col-span-5 sm:p-10">
+            <div className="space-y-3">
+              <span className="text-xs font-bold uppercase tracking-[0.2em] text-brand-500">
+                Langkah Awal
+              </span>
+              <h2 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-slate-900">
+                Mulai dari rasa
+                <br />
+                ingin tahu.
+              </h2>
+              <p className="text-xs sm:text-sm text-slate-600 leading-relaxed max-w-xs">
+                Buat akun gratis. Susun materi kursus pertamamu dan coba latihan simulasi bicara dengan AI.
+              </p>
+            </div>
 
-        {!supabaseConfigured && (
-          <div className="mb-4 rounded-lg bg-amber-50 px-4 py-3 text-xs text-amber-700">
-            Supabase belum dikonfigurasi — isi{" "}
-            <code className="font-mono">next/.env.local</code> lalu restart dev server.
-          </div>
-        )}
+            <div className="relative my-8 flex items-center justify-center">
+              <Image
+                src="/images/study-illustration.webp"
+                alt="Ilustrasi belajar 3D"
+                width={720}
+                height={540}
+                className="animate-book-float-slow h-auto max-h-[260px] w-auto object-contain drop-shadow-xl"
+              />
+            </div>
 
-        {/* Tombol Opsi: Daftar dengan Google (OAuth) */}
-        <button
-          type="button"
-          onClick={signUpWithGoogle}
-          disabled={loading || !supabaseConfigured || lockoutSeconds > 0}
-          className="mb-5 flex w-full items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-50 shadow-sm active:scale-95"
-        >
-          <GoogleIcon />
-          Daftar dengan Google
-        </button>
-
-        <div className="my-5 flex items-center gap-3 text-[11px] uppercase tracking-wider text-slate-400">
-          <div className="h-px flex-1 bg-slate-200" />
-          atau daftar manual dengan email
-          <div className="h-px flex-1 bg-slate-200" />
-        </div>
-
-        <form onSubmit={handleRegister} className="space-y-4">
-          {/* Username */}
-          <div>
-            <label className="mb-1 block text-xs font-semibold text-slate-600">
-              Username <span className="text-rose-500">*</span>
-            </label>
-            <input
-              required
-              minLength={3}
-              maxLength={30}
-              disabled={lockoutSeconds > 0}
-              value={username}
-              onChange={(e) => setUsername(e.target.value.toLowerCase().replace(/\s+/g, "_"))}
-              placeholder="belajarskuy_user"
-              className={inputCls}
-            />
-            <p className="mt-1 text-[11px] text-slate-400">
-              3–30 karakter: huruf kecil, angka, garis bawah (_).
-            </p>
+            <div className="flex items-center justify-between border-t border-border/70 pt-4 text-xs font-semibold text-slate-500">
+              <span>Belajar paham. Berani tampil.</span>
+              <i className="bi bi-journal-bookmark-fill text-brand-500 text-sm"></i>
+            </div>
           </div>
 
-          {/* Nama Lengkap */}
-          <div>
-            <label className="mb-1 block text-xs font-semibold text-slate-600">
-              Nama Lengkap <span className="text-rose-500">*</span>
-            </label>
-            <input
-              required
-              minLength={2}
-              maxLength={100}
-              disabled={lockoutSeconds > 0}
-              value={fullName}
-              onChange={(e) => setFullName(e.target.value)}
-              placeholder="Nama lengkap Anda"
-              className={inputCls}
-            />
-          </div>
+          {/* Kolom Kanan: Form Pendaftaran */}
+          <div className="flex items-center justify-center p-8 sm:p-12 lg:col-span-7">
+            <div className="w-full max-w-md">
+              <div>
+                <h1 className="text-3xl font-extrabold tracking-tight text-slate-900">
+                  Buat akun baru.
+                </h1>
+                <p className="mt-2 text-sm text-slate-600">
+                  Gratis, langsung bisa generate kursus &amp; coba simulasi AI.
+                </p>
+              </div>
 
-          {/* Email */}
-          <div>
-            <label className="mb-1 block text-xs font-semibold text-slate-600">
-              Email Address <span className="text-rose-500">*</span>
-            </label>
-            <input
-              type="email"
-              required
-              disabled={lockoutSeconds > 0}
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="nama@contoh.com"
-              className={inputCls}
-            />
-          </div>
-
-          {/* Password */}
-          <div>
-            <label className="mb-1 block text-xs font-semibold text-slate-600">
-              Password <span className="text-rose-500">*</span>
-            </label>
-            <input
-              type="password"
-              required
-              minLength={8}
-              disabled={lockoutSeconds > 0}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="Minimal 8 karakter"
-              className={inputCls}
-            />
-
-            {/* Live Password Strength Meter */}
-            {password && (
-              <div className="mt-2 space-y-1.5 animate-in fade-in duration-200">
-                <div className="flex items-center justify-between text-[11px]">
-                  <span className="text-slate-500">Kekuatan Password:</span>
-                  <span
-                    className={`font-bold ${
-                      strength.level === "weak"
-                        ? "text-rose-600"
-                        : strength.level === "medium"
-                        ? "text-amber-600"
-                        : "text-emerald-600"
-                    }`}
-                  >
-                    {strength.label}
-                  </span>
+              {/* Lockout Banner */}
+              {lockoutSeconds > 0 && (
+                <div className="mt-5 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-xs text-rose-800 shadow-sm">
+                  <p className="flex items-center gap-2 font-bold text-rose-900">
+                    <i className="bi bi-hourglass-split text-rose-600"></i>
+                    <span>Pendaftaran Dikunci Sementara</span>
+                  </p>
+                  <p className="mt-1 leading-relaxed">
+                    Terlalu banyak percobaan. Silakan tunggu{" "}
+                    <span className="font-mono font-bold text-rose-900">
+                      {String(Math.floor(lockoutSeconds / 60)).padStart(2, "0")}:
+                      {String(lockoutSeconds % 60).padStart(2, "0")}
+                    </span>{" "}
+                    sebelum mencoba mendaftar kembali.
+                  </p>
                 </div>
-                {/* Strength Bar */}
-                <div className="h-1.5 w-full rounded-full bg-slate-100 overflow-hidden">
-                  <div
-                    className={`h-full ${strength.color} transition-all duration-300 rounded-full`}
-                    style={{ width: strength.barWidth }}
+              )}
+
+              {!supabaseConfigured && (
+                <div className="mt-5 rounded-xl bg-amber-50 px-4 py-3 text-xs text-amber-800">
+                  Supabase belum dikonfigurasi — isi <code className="font-mono">next/.env.local</code> lalu restart dev server.
+                </div>
+              )}
+
+              {/* Google OAuth Button */}
+              <button
+                type="button"
+                onClick={signUpWithGoogle}
+                disabled={loading || !supabaseConfigured || lockoutSeconds > 0}
+                className="mt-6 flex h-12 w-full items-center justify-center gap-3 rounded-2xl border border-border/90 bg-white px-4 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-surface-2 active:scale-[0.99] disabled:opacity-50"
+              >
+                <GoogleIcon />
+                <span>Daftar dengan Google</span>
+              </button>
+
+              {/* Divider */}
+              <div className="my-6 flex items-center gap-3 text-xs uppercase tracking-wider text-slate-400">
+                <div className="h-px flex-1 bg-border/80" />
+                <span>atau daftar manual dengan email</span>
+                <div className="h-px flex-1 bg-border/80" />
+              </div>
+
+              {/* Registration Form */}
+              <form onSubmit={handleRegister} className="space-y-4">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <div>
+                    <label className="mb-1.5 block text-xs font-bold text-slate-700">
+                      Username <span className="text-rose-500">*</span>
+                    </label>
+                    <input
+                      required
+                      minLength={3}
+                      maxLength={30}
+                      disabled={lockoutSeconds > 0}
+                      value={username}
+                      onChange={(e) => setUsername(e.target.value.toLowerCase().replace(/\s+/g, "_"))}
+                      placeholder="user_skuy"
+                      className={inputCls}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="mb-1.5 block text-xs font-bold text-slate-700">
+                      Nama Lengkap <span className="text-rose-500">*</span>
+                    </label>
+                    <input
+                      required
+                      minLength={2}
+                      maxLength={100}
+                      disabled={lockoutSeconds > 0}
+                      value={fullName}
+                      onChange={(e) => setFullName(e.target.value)}
+                      placeholder="Nama lengkapmu"
+                      className={inputCls}
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="mb-1.5 block text-xs font-bold text-slate-700">
+                    Email <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="email"
+                    required
+                    disabled={lockoutSeconds > 0}
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="nama@contoh.com"
+                    className={inputCls}
                   />
                 </div>
 
-                {/* Criteria Checklist */}
-                <div className="pt-1 text-[10px] space-y-0.5 text-slate-500">
-                  <p className={strength.hasLength ? "text-emerald-600 font-medium" : ""}>
-                    {strength.hasLength ? "✓" : "○"} Minimal 8 karakter
-                  </p>
-                  <p className={strength.hasUpperLower ? "text-emerald-600 font-medium" : ""}>
-                    {strength.hasUpperLower ? "✓" : "○"} Campuran huruf besar (A-Z) dan kecil (a-z)
-                  </p>
-                  <p className={strength.hasNumberOrSymbol ? "text-emerald-600 font-medium" : ""}>
-                    {strength.hasNumberOrSymbol ? "✓" : "○"} Mengandung angka (0-9) atau simbol unik
-                  </p>
+                <div>
+                  <label className="mb-1.5 block text-xs font-bold text-slate-700">
+                    Kata Sandi <span className="text-rose-500">*</span>
+                  </label>
+                  <div className="relative">
+                    <input
+                      type={showPassword ? "text" : "password"}
+                      required
+                      minLength={8}
+                      disabled={lockoutSeconds > 0}
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder="Minimal 8 karakter"
+                      className={inputCls}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword((prev) => !prev)}
+                      aria-label={showPassword ? "Sembunyikan kata sandi" : "Tampilkan kata sandi"}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:text-slate-700"
+                    >
+                      <i className={`bi ${showPassword ? "bi-eye-slash-fill" : "bi-eye-fill"} text-base`}></i>
+                    </button>
+                  </div>
+
+                  {/* Password Strength Meter */}
+                  {password && (
+                    <div className="mt-2 space-y-1.5">
+                      <div className="flex items-center justify-between text-[11px]">
+                        <span className="text-slate-500">Kekuatan Sandi:</span>
+                        <span
+                          className={`font-bold ${
+                            strength.level === "weak"
+                              ? "text-rose-600"
+                              : strength.level === "medium"
+                              ? "text-amber-600"
+                              : "text-emerald-600"
+                          }`}
+                        >
+                          {strength.label}
+                        </span>
+                      </div>
+                      <div className="h-1.5 w-full rounded-full bg-slate-200 overflow-hidden">
+                        <div
+                          className={`h-full ${strength.color} transition-all duration-300 rounded-full`}
+                          style={{ width: strength.barWidth }}
+                        />
+                      </div>
+                      <div className="pt-1 text-[11px] space-y-0.5 text-slate-500">
+                        <p className={strength.hasLength ? "text-emerald-600 font-medium flex items-center gap-1.5" : "flex items-center gap-1.5"}>
+                          <i className={`bi ${strength.hasLength ? "bi-check-lg text-emerald-500" : "bi-dash text-slate-400"}`}></i>
+                          <span>Minimal 8 karakter</span>
+                        </p>
+                        <p className={strength.hasUpperLower ? "text-emerald-600 font-medium flex items-center gap-1.5" : "flex items-center gap-1.5"}>
+                          <i className={`bi ${strength.hasUpperLower ? "bi-check-lg text-emerald-500" : "bi-dash text-slate-400"}`}></i>
+                          <span>Kombinasi huruf besar (A-Z) dan kecil (a-z)</span>
+                        </p>
+                        <p className={strength.hasNumberOrSymbol ? "text-emerald-600 font-medium flex items-center gap-1.5" : "flex items-center gap-1.5"}>
+                          <i className={`bi ${strength.hasNumberOrSymbol ? "bi-check-lg text-emerald-500" : "bi-dash text-slate-400"}`}></i>
+                          <span>Mengandung angka (0-9) atau simbol unik</span>
+                        </p>
+                      </div>
+                    </div>
+                  )}
                 </div>
-              </div>
-            )}
-          </div>
 
-          {/* Konfirmasi Password */}
-          <div>
-            <label className="mb-1 block text-xs font-semibold text-slate-600">
-              Konfirmasi Password <span className="text-rose-500">*</span>
-            </label>
-            <input
-              type="password"
-              required
-              minLength={8}
-              disabled={lockoutSeconds > 0}
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-              placeholder="Ketik ulang password Anda"
-              className={`${inputCls} ${
-                passwordsMismatch
-                  ? "border-rose-300 focus:border-rose-400 focus:ring-rose-100"
-                  : passwordsMatch
-                  ? "border-emerald-300 focus:border-emerald-400 focus:ring-emerald-100"
-                  : ""
-              }`}
-            />
-            {passwordsMatch && (
-              <p className="mt-1 text-[11px] font-semibold text-emerald-600 flex items-center gap-1">
-                ✓ Password cocok
+                <div>
+                  <label className="mb-1.5 block text-xs font-bold text-slate-700">
+                    Konfirmasi Kata Sandi <span className="text-rose-500">*</span>
+                  </label>
+                  <div className="relative">
+                    <input
+                      type={showConfirmPassword ? "text" : "password"}
+                      required
+                      minLength={8}
+                      disabled={lockoutSeconds > 0}
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      placeholder="Ketik ulang kata sandi Anda"
+                      className={`${inputCls} ${
+                        passwordsMismatch
+                          ? "border-rose-400 focus:border-rose-500"
+                          : passwordsMatch
+                          ? "border-emerald-400 focus:border-emerald-500"
+                          : ""
+                      }`}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowConfirmPassword((prev) => !prev)}
+                      aria-label={showConfirmPassword ? "Sembunyikan konfirmasi kata sandi" : "Tampilkan konfirmasi kata sandi"}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:text-slate-700"
+                    >
+                      <i className={`bi ${showConfirmPassword ? "bi-eye-slash-fill" : "bi-eye-fill"} text-base`}></i>
+                    </button>
+                  </div>
+
+                  {passwordsMatch && (
+                    <p className="mt-1.5 text-xs font-semibold text-emerald-600 flex items-center gap-1.5">
+                      <i className="bi bi-check-circle-fill"></i>
+                      <span>Kata sandi cocok</span>
+                    </p>
+                  )}
+                  {passwordsMismatch && (
+                    <p className="mt-1.5 text-xs font-semibold text-rose-500 flex items-center gap-1.5">
+                      <i className="bi bi-exclamation-circle-fill"></i>
+                      <span>Konfirmasi kata sandi belum cocok</span>
+                    </p>
+                  )}
+                </div>
+
+                {error && (
+                  <div className="rounded-xl border border-rose-200 bg-rose-50 px-3.5 py-2.5 text-xs font-semibold text-rose-600 flex items-center gap-2">
+                    <i className="bi bi-x-circle-fill"></i>
+                    <span>{error}</span>
+                  </div>
+                )}
+                {info && (
+                  <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3.5 py-2.5 text-xs font-semibold text-emerald-700 flex items-center gap-2">
+                    <i className="bi bi-check-circle-fill text-emerald-600"></i>
+                    <span>{info}</span>
+                  </div>
+                )}
+
+                <button
+                  type="submit"
+                  disabled={loading || !supabaseConfigured || lockoutSeconds > 0 || passwordsMismatch}
+                  className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-brand-500 px-5 text-sm font-bold text-white shadow-lg shadow-brand-500/25 transition-all duration-200 hover:bg-brand-600 active:scale-[0.99] disabled:opacity-60"
+                >
+                  {loading ? (
+                    <span>Mendaftarkan akun...</span>
+                  ) : lockoutSeconds > 0 ? (
+                    <span>Tunggu ({lockoutSeconds}s)</span>
+                  ) : (
+                    <>
+                      <span>Daftar Akun Baru</span>
+                      <i className="bi bi-arrow-right text-xs"></i>
+                    </>
+                  )}
+                </button>
+              </form>
+
+              <p className="mt-8 text-center text-xs text-slate-500">
+                Sudah punya akun?{" "}
+                <Link
+                  href="/login"
+                  className="font-bold text-brand-500 hover:underline underline-offset-4"
+                >
+                  Masuk di sini
+                </Link>
               </p>
-            )}
-            {passwordsMismatch && (
-              <p className="mt-1 text-[11px] font-semibold text-rose-500 flex items-center gap-1">
-                ⚠️ Konfirmasi password belum cocok
-              </p>
-            )}
+            </div>
           </div>
+        </div>
+      </main>
 
-          {error && (
-            <p className="rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-600">{error}</p>
-          )}
-          {info && (
-            <p className="rounded-lg bg-emerald-50 px-3 py-2 text-xs text-emerald-700">{info}</p>
-          )}
-
-          <button
-            type="submit"
-            disabled={loading || !supabaseConfigured || lockoutSeconds > 0 || passwordsMismatch}
-            className="w-full rounded-xl bg-brand-500 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-brand-500/25 transition hover:bg-brand-600 active:scale-95 disabled:opacity-60"
-          >
-            {loading
-              ? "Mendaftarkan..."
-              : lockoutSeconds > 0
-              ? `Tunggu (${lockoutSeconds}s)`
-              : "Daftar →"}
-          </button>
-        </form>
-
-        <p className="mt-6 text-center text-xs text-slate-500">
-          Sudah punya akun?{" "}
-          <Link href="/login" className="font-semibold text-brand-500 hover:underline">
-            Sign in
-          </Link>
-        </p>
-      </div>
-    </main>
+      {/* Footer Minimalis */}
+      <footer className="py-6 text-center text-xs text-slate-500">
+        © {new Date().getFullYear()} belajar.skuy • Semua hak dilindungi.
+      </footer>
+    </div>
   );
 }

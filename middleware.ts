@@ -1,7 +1,21 @@
 import { createServerClient } from "@supabase/ssr";
-import { NextResponse, type NextRequest } from "next/server";
+import { NextResponse, type NextRequest, type NextFetchEvent } from "next/server";
 
-export async function middleware(request: NextRequest) {
+/**
+ * Helper redirect aman (OWASP ZAP Remediation - Task 4D-MH):
+ * Menyematkan header keamanan esensial pada respons redirect agar tidak telanjang
+ * saat dipindai scanner keamanan atau diakses browser.
+ */
+function secureRedirect(url: URL | string) {
+  const res = NextResponse.redirect(url);
+  res.headers.set("X-Frame-Options", "SAMEORIGIN");
+  res.headers.set("X-Content-Type-Options", "nosniff");
+  res.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
+  res.headers.set("Permissions-Policy", "camera=(self), microphone=(self), geolocation=()");
+  return res;
+}
+
+export async function middleware(request: NextRequest, event?: NextFetchEvent) {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
@@ -28,9 +42,18 @@ export async function middleware(request: NextRequest) {
   });
 
   // PENTING: getUser() (bukan getSession) agar token divalidasi ke server Supabase
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  let user = null;
+  try {
+    const {
+      data: { user: authUser },
+    } = await supabase.auth.getUser();
+    user = authUser;
+  } catch (err) {
+    console.warn(
+      "[middleware] Gagal menghubungi Supabase Auth (periksa koneksi internet atau status project Supabase):",
+      err instanceof Error ? err.message : err
+    );
+  }
 
   const path = request.nextUrl.pathname;
 
@@ -42,13 +65,13 @@ export async function middleware(request: NextRequest) {
     request.nextUrl.searchParams.forEach((val, key) => {
       callbackUrl.searchParams.set(key, val);
     });
-    return NextResponse.redirect(callbackUrl);
+    return secureRedirect(callbackUrl);
   }
 
   // Rute yang wajib login (Fitur BG menambah /portal & /simulation, Fitur EF menambah /profile, Fitur Onboarding menambah /onboarding)
   const PRIVATE = ["/dashboard", "/portal", "/simulation", "/profile", "/onboarding"];
   if (!user && PRIVATE.some((p) => path.startsWith(p))) {
-    return NextResponse.redirect(new URL("/login", request.url));
+    return secureRedirect(new URL("/login", request.url));
   }
   // `/pricing` SENGAJA tidak ikut aturan redirect di bawah. Halaman harga harus bisa
   // dibuka user yang SUDAH login (tombol "Upgrade Premium" di sidebar & "Lihat paket"
@@ -59,29 +82,38 @@ export async function middleware(request: NextRequest) {
   // User yang sudah login dilarang membuka /login atau /register (diarahkan ke /portal).
   // Halaman landing ("/") dan harga ("/pricing") bebas diakses karena sudah session-aware.
   if (user && (path === "/login" || path === "/register")) {
-    return NextResponse.redirect(new URL("/portal", request.url));
+    return secureRedirect(new URL("/portal", request.url));
   }
 
-  // Fitur DM — ping berkala "masih aktif" untuk kartu Aktif Belakangan Ini di
-  // admin-dashboard. Beda dari `recordLogin` (dipanggil sekali di titik login):
-  // ini menjaga `last_seen_at` tetap segar SELAMA user browsing, bukan cuma
-  // saat pertama masuk. Di-throttle lewat cookie (10 menit) — kalau tidak,
-  // setiap navigasi halaman jadi satu write ke Supabase.
+  // Task 14A-GH: Non-blocking telemetry decoupling
+  // Ping berkala "masih aktif" untuk kartu Aktif Belakangan Ini di admin-dashboard.
+  // Di-throttle lewat cookie (10 menit).
+  // PENTING: Update database dijalankan secara asynchronous/non-blocking agar tidak menahan
+  // server response dan navigasi pengguna (menghilangkan waterfall 80-150ms per klik).
   if (user) {
     const PING_COOKIE = "lsp";
     const THROTTLE_MS = 10 * 60 * 1000;
     const lastPing = request.cookies.get(PING_COOKIE)?.value;
     const now = Date.now();
     if (!lastPing || now - Number(lastPing) > THROTTLE_MS) {
-      await supabase
-        .from("profiles")
-        .update({ last_seen_at: new Date().toISOString() })
-        .eq("id", user.id);
       response.cookies.set(PING_COOKIE, String(now), {
         maxAge: 3600,
         httpOnly: true,
         sameSite: "lax",
       });
+
+      const telemetryPromise = Promise.resolve(
+        supabase
+          .from("profiles")
+          .update({ last_seen_at: new Date().toISOString() })
+          .eq("id", user.id)
+      ).catch(() => {
+        /* Abaikan kegagalan telemetry background agar navigasi tetap instan */
+      });
+
+      if (event && typeof event.waitUntil === "function") {
+        event.waitUntil(telemetryPromise);
+      }
     }
   }
 

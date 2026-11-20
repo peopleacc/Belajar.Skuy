@@ -25,6 +25,7 @@ export default function VoiceAnswer({
   const [attemptsUsed, setAttemptsUsed] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -38,7 +39,22 @@ export default function VoiceAnswer({
       window.isSecureContext;
     if (!supported) setState("unsupported");
     return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
+      // Task 15D-QS (F38): Bersihkan timer, recorder, dan hardware mic stream saat unmount
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
+        try {
+          mediaRecorderRef.current.stop();
+        } catch {
+          /* ignore */
+        }
+      }
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((t) => t.stop());
+        streamRef.current = null;
+      }
     };
   }, []);
 
@@ -54,21 +70,33 @@ export default function VoiceAnswer({
     setError(null);
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mime = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
-        ? "audio/webm;codecs=opus"
-        : "audio/webm";
-      const recorder = new MediaRecorder(stream, { mimeType: mime });
+      streamRef.current = stream;
+      let mime = "";
+      if (typeof MediaRecorder.isTypeSupported === "function") {
+        if (MediaRecorder.isTypeSupported("audio/webm;codecs=opus")) {
+          mime = "audio/webm;codecs=opus";
+        } else if (MediaRecorder.isTypeSupported("audio/webm")) {
+          mime = "audio/webm";
+        } else if (MediaRecorder.isTypeSupported("audio/mp4")) {
+          mime = "audio/mp4";
+        }
+      }
+
+      const recorder = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
       chunksRef.current = [];
       recorder.ondataavailable = (e) => {
-        if (e.data.size > 0) chunksRef.current.push(e.data);
+        if (e.data && e.data.size > 0) chunksRef.current.push(e.data);
       };
       recorder.onstop = () => {
         stream.getTracks().forEach((t) => t.stop());
-        const blob = new Blob(chunksRef.current, { type: mime });
-        void uploadRecording(blob);
+        streamRef.current = null;
+        const actualMime = recorder.mimeType || mime || "audio/webm";
+        const blob = new Blob(chunksRef.current, { type: actualMime });
+        const ext = actualMime.includes("mp4") ? "mp4" : "webm";
+        void uploadRecording(blob, `rekaman.${ext}`);
       };
       mediaRecorderRef.current = recorder;
-      recorder.start();
+      recorder.start(1000); // Minta potongan tiap 1 detik agar buffer audio tidak kosong
       setState("recording");
       setSeconds(0);
       timerRef.current = setInterval(() => {
@@ -87,16 +115,32 @@ export default function VoiceAnswer({
 
   function stopRecording() {
     stopTimer();
-    mediaRecorderRef.current?.stop();
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
+      try {
+        mediaRecorderRef.current.requestData();
+      } catch {
+        /* ignore */
+      }
+      mediaRecorderRef.current.stop();
+    }
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((t) => t.stop());
+      streamRef.current = null;
+    }
   }
 
-  async function uploadRecording(blob: Blob) {
+  async function uploadRecording(blob: Blob, filename = "rekaman.webm") {
+    if (!blob || blob.size === 0) {
+      setError("Rekaman kosong atau mikrofon tidak menangkap audio. Silakan coba lagi.");
+      setState("idle");
+      return;
+    }
     setState("transcribing");
     try {
       const form = new FormData();
-      form.append("audio", blob, "rekaman.webm");
+      form.append("audio", blob, filename);
       const res = await fetch("/api/quiz/transcribe", { method: "POST", body: form });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         setError(data.error ?? "Transkripsi gagal. Coba rekam ulang atau ketik jawabanmu.");
         setState("idle");

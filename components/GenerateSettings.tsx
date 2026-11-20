@@ -14,10 +14,12 @@ export type QuizTypeCounts = { mcq: number; essay: number; voice: number };
 /** Fitur T — tipe mana yang AKTIF, eksplisit & terpisah dari angkanya. */
 export type QuizTypeEnabled = { mcq: boolean; essay: boolean; voice: boolean };
 
+export type CourseLevel = "High" | "Low";
+
 export type GenerateOptions = {
   quizCount: number;
-  level: string;
-  sectionCount: number;
+  level: CourseLevel;
+  sectionCount?: number;
   quizTypes: QuizTypeCounts;
 };
 
@@ -94,8 +96,8 @@ export function rebalanceQuizTypes(
 
 export const DEFAULT_OPTIONS: GenerateOptions = {
   quizCount: 10,
-  level: "Menengah",
-  sectionCount: 4,
+  level: "High",
+  sectionCount: 10,
   quizTypes: { mcq: 10, essay: 0, voice: 0 },
 };
 
@@ -109,10 +111,14 @@ export function loadSavedOptions(): GenerateOptions {
     if (!raw) return DEFAULT_OPTIONS;
     const parsed = JSON.parse(raw) as Partial<GenerateOptions>;
     const quizCount = Number(parsed.quizCount);
-    const sectionCount = Number(parsed.sectionCount);
-    const level = ["Dasar", "Menengah", "Lanjut"].includes(parsed.level as string)
-      ? (parsed.level as string)
-      : DEFAULT_OPTIONS.level;
+    let level: CourseLevel = "High";
+    if (parsed.level === "Low" || parsed.level === "Dasar") {
+      level = "Low";
+    } else if (parsed.level === "High" || parsed.level === "Lanjut") {
+      level = "High";
+    } else {
+      level = "High";
+    }
     const safeQuizCount = Number.isFinite(quizCount)
       ? clamp(quizCount, 5, 15)
       : DEFAULT_OPTIONS.quizCount;
@@ -124,9 +130,7 @@ export function loadSavedOptions(): GenerateOptions {
     };
     return {
       quizCount: safeQuizCount,
-      sectionCount: Number.isFinite(sectionCount)
-        ? clamp(sectionCount, 2, 8)
-        : DEFAULT_OPTIONS.sectionCount,
+      sectionCount: level === "High" ? 10 : 5,
       level,
       // Fitur T — tipe aktif yang tersimpan ikut dipulihkan (termasuk "PG dimatikan").
       quizTypes: rebalanceQuizTypes(savedCounts, safeQuizCount, enabledFromCounts(savedCounts)),
@@ -182,7 +186,7 @@ function TypeRow({
   return (
     <div
       title={lockedReason}
-      className={`group relative flex flex-1 flex-col justify-between rounded-xl border p-3.5 text-left transition hover:-translate-y-0.5 hover:shadow-sm ${
+      className={`group relative flex flex-1 flex-col justify-between rounded-xl border p-4 text-left transition hover:-translate-y-0.5 hover:shadow-sm ${
         locked
           ? "border-dashed border-slate-200 bg-slate-50/70"
           : checked
@@ -194,11 +198,11 @@ function TypeRow({
         <div className="flex items-start justify-between gap-2">
           {icon ? (
             <span
-              className={`flex h-9 w-9 items-center justify-center rounded-lg text-lg transition ${
+              className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-lg transition ${
                 locked
                   ? "bg-slate-200/70 text-slate-400"
                   : checked
-                    ? "bg-brand-500 text-white"
+                    ? "bg-brand-500 text-white shadow-sm"
                     : "bg-brand-500/10 text-brand-600 group-hover:bg-brand-500/20"
               }`}
             >
@@ -208,9 +212,9 @@ function TypeRow({
             <span />
           )}
 
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1.5 shrink-0">
             {locked && (
-              <span className="flex items-center gap-1 rounded-full bg-slate-200/80 px-2 py-0.5 text-[10px] font-semibold text-slate-500">
+              <span className="flex items-center gap-1 rounded-full bg-slate-200/80 px-2 py-0.5 text-[10px] font-semibold text-slate-500 whitespace-nowrap">
                 <i className="bi bi-lock-fill"></i>
                 Berbayar
               </span>
@@ -226,21 +230,21 @@ function TypeRow({
         </div>
 
         <div className="my-2.5">
-          <p className={`text-xs font-bold ${locked ? "text-slate-400" : checked ? "text-brand-700" : "text-slate-800"}`}>
+          <p className={`text-xs sm:text-sm font-bold ${locked ? "text-slate-400" : checked ? "text-brand-700 font-bold" : "text-slate-800"}`}>
             {label}
           </p>
           {description && (
-            <p className="mt-1 text-[11px] leading-relaxed text-slate-500">
+            <p className="mt-1 text-[11px] sm:text-xs leading-relaxed text-slate-500 min-h-[40px]">
               {description}
             </p>
           )}
         </div>
       </label>
 
-      <div className="mt-2 flex items-center justify-between border-t border-slate-200/60 pt-2.5">
-        <span className="text-[10px] font-medium text-slate-400">Porsi Soal</span>
+      <div className="mt-2.5 flex items-center justify-between border-t border-slate-200/60 pt-2.5 gap-2">
+        <span className="text-[11px] font-medium text-slate-500 shrink-0 whitespace-nowrap">Porsi Soal</span>
         {editable ? (
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1.5 shrink-0">
             <input
               type="number"
               min={1}
@@ -250,11 +254,11 @@ function TypeRow({
               onChange={(e) => onCount?.(Number(e.target.value))}
               className="h-7 w-12 rounded-lg border border-slate-200 bg-white px-1.5 text-center text-xs font-bold text-slate-700 outline-none transition focus:border-brand-500 focus:ring-1 focus:ring-brand-500 disabled:opacity-50"
             />
-            <span className="text-[11px] font-medium text-slate-500">soal</span>
+            <span className="text-[11px] font-medium text-slate-500 shrink-0">soal</span>
           </div>
         ) : (
           <span
-            className={`rounded-lg px-2 py-0.5 text-xs font-bold transition ${
+            className={`rounded-lg px-2 py-0.5 text-xs font-bold shrink-0 transition ${
               checked
                 ? "bg-white text-brand-700 shadow-2xs border border-brand-200/60"
                 : "text-slate-300"
@@ -322,8 +326,8 @@ export function QuizTypeFields({
 
   return (
     <div>
-      <p className="mb-1.5 text-xs font-semibold text-slate-600">Tipe soal</p>
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+      <p className="mb-2 text-xs font-semibold text-slate-700">Tipe soal</p>
+      <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 lg:grid-cols-3">
         <TypeRow
           label="Pilihan Ganda"
           icon="bi-ui-checks"
@@ -367,15 +371,18 @@ export function QuizTypeFields({
         />
       </div>
       {voiceLocked && (
-        <p className="mt-2 flex items-center gap-1.5 text-[11px] text-slate-500">
-          <i className="bi bi-lock-fill"></i>
-          Soal jawab-suara tersedia di paket berbayar.{" "}
-          <Link href="/pricing" className="font-semibold text-brand-500 hover:underline">
+        <p className="mt-2.5 flex items-center gap-1.5 text-xs text-slate-500">
+          <i className="bi bi-lock-fill text-slate-400"></i>
+          <span>Soal jawab-suara tersedia di paket berbayar.</span>{" "}
+          <Link href="/pricing" className="font-semibold text-brand-600 hover:underline">
             Lihat paket
           </Link>
         </p>
       )}
-      <p className="mt-2 text-[11px] text-slate-400">⏱ perkiraan {estimateMin} menit mengerjakan</p>
+      <p className="mt-2.5 flex items-center gap-1.5 text-xs text-slate-400">
+        <i className="bi bi-clock-history"></i>
+        <span>perkiraan {estimateMin} menit mengerjakan</span>
+      </p>
     </div>
   );
 }
@@ -386,11 +393,15 @@ export function GenerateSettingsFields({
   onChange,
   disabled,
   voiceLocked = false,
+  highLevelLocked = false,
+  onHighLevelLockedClick,
 }: {
   value: GenerateOptions;
   onChange: (next: GenerateOptions) => void;
   disabled?: boolean;
   voiceLocked?: boolean; // Fitur CD — paket belum mencakup soal jawab-suara
+  highLevelLocked?: boolean; // Fitur 7J-GS — level High terkunci untuk non-premium / kuota habis
+  onHighLevelLockedClick?: () => void;
 }) {
   function setQuizCount(n: number) {
     onChange({
@@ -402,11 +413,14 @@ export function GenerateSettingsFields({
   }
 
   return (
-    <div className="grid grid-cols-1 gap-x-6 gap-y-5 sm:grid-cols-2">
+    <div className="space-y-6">
+      {/* Baris 1: Jumlah Soal Ujian */}
       <div>
-        <div className="mb-1 flex justify-between text-xs font-semibold text-slate-600">
+        <div className="mb-1.5 flex items-center justify-between text-xs font-semibold text-slate-700">
           <span>Jumlah soal ujian</span>
-          <span className="text-brand-600">{value.quizCount}</span>
+          <span className="rounded-full bg-brand-50 px-2 py-0.5 text-xs font-bold text-brand-600">
+            {value.quizCount}
+          </span>
         </div>
         <input
           type="range"
@@ -415,58 +429,116 @@ export function GenerateSettingsFields({
           value={value.quizCount}
           disabled={disabled}
           onChange={(e) => setQuizCount(Number(e.target.value))}
-          className="w-full accent-brand-500"
+          className="w-full accent-brand-500 cursor-pointer"
         />
-        <div className="flex justify-between text-[10px] text-slate-400">
+        <div className="flex justify-between text-[10px] font-medium text-slate-400">
           <span>5</span>
           <span>15</span>
         </div>
       </div>
 
+      {/* Baris 2: Selektor 2 Level (High vs Low) & Estimasi Subbab */}
       <div>
-        <label className="mb-1 block text-xs font-semibold text-slate-600">
-          Level penjelasan
-        </label>
-        <div className="flex gap-2">
-          {["Dasar", "Menengah", "Lanjut"].map((l) => (
-            <button
-              key={l}
-              type="button"
-              disabled={disabled}
-              onClick={() => onChange({ ...value, level: l })}
-              className={`flex-1 rounded-xl border px-3 py-2 text-xs font-semibold transition ${
-                value.level === l
-                  ? "border-accent bg-accent/10 text-accent"
-                  : "border-border text-slate-500 hover:bg-surface-2"
-              }`}
-            >
-              {l}
-            </button>
-          ))}
+        <div className="mb-2 flex items-center justify-between">
+          <label className="text-xs font-semibold text-slate-700">
+            Tingkat Kedalaman & Subbab
+          </label>
+          <span className="text-[11px] text-slate-400 font-normal">
+            Target otomatis AI per bab
+          </span>
         </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {/* Card High */}
+          <div
+            onClick={() => {
+              if (highLevelLocked) {
+                onHighLevelLockedClick?.();
+                return;
+              }
+              if (!disabled) {
+                onChange({ ...value, level: "High", sectionCount: 10 });
+              }
+            }}
+            className={`group relative rounded-xl border p-4 text-left transition select-none ${
+              highLevelLocked
+                ? "border-dashed border-slate-200 bg-slate-50/70 text-slate-400 cursor-not-allowed"
+                : value.level === "High"
+                  ? "border-brand-500 bg-brand-50/40 ring-1 ring-brand-500 shadow-sm cursor-pointer"
+                  : "border-slate-200 bg-white hover:border-slate-300 cursor-pointer hover:-translate-y-0.5"
+            }`}
+          >
+            <div className="flex items-center justify-between gap-2">
+              <span
+                className={`text-xs sm:text-sm font-bold ${
+                  highLevelLocked
+                    ? "text-slate-400"
+                    : value.level === "High"
+                      ? "text-brand-700 font-bold"
+                      : "text-slate-800"
+                }`}
+              >
+                High
+              </span>
+              {highLevelLocked ? (
+                <span className="flex items-center gap-1 rounded-full bg-slate-200/80 px-2 py-0.5 text-[10px] font-semibold text-slate-500 whitespace-nowrap">
+                  <i className="bi bi-lock-fill"></i>
+                  <span>Premium</span>
+                </span>
+              ) : (
+                <span className="rounded-full bg-brand-500/10 px-2 py-0.5 text-[10px] font-bold text-brand-700">
+                  8 - 12 Subbab
+                </span>
+              )}
+            </div>
+            <p className="mt-1.5 text-[11px] leading-relaxed text-slate-500">
+              Pembahasan mendalam, terperinci, dan komprehensif.
+            </p>
+          </div>
+
+          {/* Card Low */}
+          <div
+            onClick={() => {
+              if (!disabled) {
+                onChange({ ...value, level: "Low", sectionCount: 5 });
+              }
+            }}
+            className={`group relative rounded-xl border p-4 text-left transition select-none ${
+              value.level === "Low"
+                ? "border-brand-500 bg-brand-50/40 ring-1 ring-brand-500 shadow-sm cursor-pointer"
+                : "border-slate-200 bg-white hover:border-slate-300 cursor-pointer hover:-translate-y-0.5"
+            }`}
+          >
+            <div className="flex items-center justify-between gap-2">
+              <span
+                className={`text-xs sm:text-sm font-bold ${
+                  value.level === "Low" ? "text-brand-700 font-bold" : "text-slate-800"
+                }`}
+              >
+                Low
+              </span>
+              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-700">
+                4 - 7 Subbab
+              </span>
+            </div>
+            <p className="mt-1.5 text-[11px] leading-relaxed text-slate-500">
+              Pembahasan ringkas, padat konsep, dan to-the-point.
+            </p>
+          </div>
+        </div>
+
+        {highLevelLocked && (
+          <p className="mt-2.5 flex items-center gap-1.5 text-xs text-slate-500">
+            <i className="bi bi-lock-fill text-slate-400"></i>
+            <span>Level High (8 - 12 subbab) hanya tersedia untuk akun Premium dengan kuota aktif.</span>{" "}
+            <Link href="/pricing" className="font-semibold text-brand-600 hover:underline">
+              Lihat paket
+            </Link>
+          </p>
+        )}
       </div>
 
-      <div className="sm:col-span-2">
-        <div className="mb-1 flex justify-between text-xs font-semibold text-slate-600">
-          <span>Jumlah pembagian subbab</span>
-          <span className="text-brand-600">{value.sectionCount}</span>
-        </div>
-        <input
-          type="range"
-          min={2}
-          max={8}
-          value={value.sectionCount}
-          disabled={disabled}
-          onChange={(e) => onChange({ ...value, sectionCount: Number(e.target.value) })}
-          className="w-full accent-brand-500"
-        />
-        <div className="flex justify-between text-[10px] text-slate-400">
-          <span>2</span>
-          <span>8</span>
-        </div>
-      </div>
-
-      <div className="sm:col-span-2">
+      {/* Baris 3: Tipe Soal (MCQ, Essay, Voice) */}
+      <div>
         <QuizTypeFields
           total={value.quizCount}
           value={value.quizTypes}
@@ -488,6 +560,8 @@ export function GenerateSettingsModal({
   onChange,
   busy,
   error,
+  suggestions,
+  onPickSuggestion,
   onCancel,
   onSubmit,
   title,
@@ -495,68 +569,122 @@ export function GenerateSettingsModal({
   busyLabel,
   extraContent,
   voiceLocked = false,
+  highLevelLocked = false,
+  onHighLevelLockedClick,
 }: {
   subtitle?: string;
   value: GenerateOptions;
   onChange: (next: GenerateOptions) => void;
   busy: boolean;
   error: string | null;
+  suggestions?: string[];
+  onPickSuggestion?: (s: string) => void;
   onCancel: () => void;
   onSubmit: () => void;
-  title?: string;
+  title?: React.ReactNode;
   submitLabel?: string;
   busyLabel?: string;
   extraContent?: React.ReactNode; // slot: dirender setelah kontrol setting, sebelum pesan error
   voiceLocked?: boolean; // Fitur CD — paket belum mencakup soal jawab-suara
+  highLevelLocked?: boolean; // Fitur 7J-GS — level High terkunci untuk non-premium / kuota habis
+  onHighLevelLockedClick?: () => void;
 }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink-900/40 p-4">
-      <div className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-sm bg-surface p-6 shadow-card">
-        <div className="mb-4 flex items-center justify-between">
-          <h3 className="font-bold text-slate-800">
-            {title ?? (
-              <>
-                <i className="bi bi-gear-fill mr-1"></i> Pengaturan Generate
-              </>
-            )}
-          </h3>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 sm:p-6 backdrop-blur-xs">
+      <div className="max-h-[90vh] w-full max-w-2xl lg:max-w-3xl overflow-y-auto rounded-2xl bg-white p-6 sm:p-8 shadow-2xl border border-slate-100">
+        <div className="mb-5 flex items-center justify-between border-b border-slate-100 pb-4">
+          <div>
+            <h3 className="text-base sm:text-lg font-bold text-slate-900 flex items-center gap-2">
+              {title ?? (
+                <>
+                  <i className="bi bi-gear-fill text-brand-500"></i>
+                  <span>Pengaturan Generate</span>
+                </>
+              )}
+            </h3>
+            {subtitle && <p className="mt-1 line-clamp-1 text-xs text-slate-500">{subtitle}</p>}
+          </div>
           <button
             onClick={onCancel}
             disabled={busy}
-            className="text-slate-400 transition hover:text-slate-700"
+            className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 disabled:opacity-50"
+            aria-label="Tutup modal"
           >
-            ✕
+            <i className="bi bi-x-lg"></i>
           </button>
         </div>
-        {subtitle && <p className="mb-4 line-clamp-1 text-xs text-slate-400">{subtitle}</p>}
 
         <GenerateSettingsFields
           value={value}
           onChange={onChange}
           disabled={busy}
           voiceLocked={voiceLocked}
+          highLevelLocked={highLevelLocked}
+          onHighLevelLockedClick={onHighLevelLockedClick}
         />
 
         {extraContent && <div className="mt-5">{extraContent}</div>}
 
         {error && (
-          <p className="mt-4 rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-600">{error}</p>
+          <div className="mt-4 flex items-start gap-2.5 rounded-xl bg-rose-50 p-3 text-xs text-rose-700 border border-rose-200">
+            <i className="bi bi-exclamation-triangle-fill text-rose-500 shrink-0 mt-0.5"></i>
+            <div className="flex-1">
+              <span className="font-semibold">{error}</span>
+              {suggestions && suggestions.length > 0 && (
+                <div className="mt-2.5 pt-2 border-t border-rose-200/60">
+                  <p className="font-semibold text-rose-800 text-[11px] mb-1.5 flex items-center gap-1">
+                    <i className="bi bi-lightbulb-fill text-amber-500"></i>
+                    <span>Saran instruksi alternatif yang relevan:</span>
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {suggestions.map((s, idx) => (
+                      <button
+                        key={idx}
+                        type="button"
+                        onClick={() => onPickSuggestion?.(s)}
+                        className="inline-flex items-center gap-1 rounded-lg bg-white border border-rose-300 px-2 py-0.5 text-[11px] font-medium text-rose-800 hover:bg-rose-100 transition"
+                      >
+                        <i className="bi bi-arrow-right-short text-rose-500"></i>
+                        <span>{s}</span>
+                      </button>
+                    ))}
+                  </div>
+                  <p className="mt-2 text-[10px] text-slate-500 flex items-center gap-1">
+                    <i className="bi bi-shield-check text-emerald-600"></i>
+                    <span>Kuota generate babmu tidak terpotong karena materi belum diproses.</span>
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
         )}
 
-        <div className="mt-6 flex items-center justify-end gap-2">
+        <div className="mt-6 flex flex-col-reverse sm:flex-row items-center justify-end gap-2.5 border-t border-slate-100 pt-4">
           <button
+            type="button"
             onClick={onCancel}
             disabled={busy}
-            className="rounded-xl border border-border px-4 py-2 text-xs font-semibold text-slate-500 transition hover:bg-surface-2 disabled:opacity-50"
+            className="w-full sm:w-auto rounded-xl border border-slate-200 bg-white px-5 py-2.5 text-xs font-semibold text-slate-600 transition hover:bg-slate-50 disabled:opacity-50"
           >
             Batal
           </button>
           <button
+            type="button"
             onClick={onSubmit}
             disabled={busy}
-            className="rounded-xl bg-accent px-5 py-2 text-xs font-semibold text-white shadow-lg shadow-brand-500/25 transition hover:bg-brand-600 disabled:opacity-60"
+            className="w-full sm:w-auto rounded-xl bg-brand-500 px-6 py-2.5 text-xs sm:text-sm font-semibold text-white shadow-lg shadow-brand-500/25 transition hover:bg-brand-600 active:scale-95 disabled:opacity-60 flex items-center justify-center gap-2"
           >
-            {busy ? busyLabel ?? "⏳ Menyusun materi…" : submitLabel ?? "⚡ Generate Bab"}
+            {busy ? (
+              <>
+                <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                <span>{busyLabel ?? "Menyusun materi…"}</span>
+              </>
+            ) : (
+              <>
+                <i className="bi bi-lightning-charge-fill"></i>
+                <span>{submitLabel ?? "Generate Bab"}</span>
+              </>
+            )}
           </button>
         </div>
       </div>

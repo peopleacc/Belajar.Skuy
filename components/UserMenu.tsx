@@ -77,7 +77,7 @@ export default function UserMenu({
           // eslint-disable-next-line @next/next/no-img-element
           <img src={avatarUrl} alt={fullName} className="h-7 w-7 rounded-lg object-cover" />
         ) : (
-          <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-accent text-xs font-bold text-white dark:text-slate-50">
+          <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-accent text-xs font-bold text-white">
             {initials}
           </span>
         )}

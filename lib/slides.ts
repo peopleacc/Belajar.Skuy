@@ -9,14 +9,16 @@
 // tampilan presentasi konsisten satu jalur saja — user export ke PDF dulu sebelum unggah.
 
 export const MAX_SLIDES = 20; // sinkron dengan MAX_SLIDES di service/routes/simulation.js
+export const MAX_PDF_BYTES = 25 * 1024 * 1024; // 25 MB - Validasi Dual-Layer (Task 1A-FV)
 
 // Sisi terpanjang gambar yang dikirim ke AI (Fitur DB) — cukup utk Gemini menangkap
 // isi chart/diagram, sengaja JAUH di bawah resolusi render layar (biar payload kecil).
 const AI_IMAGE_MAX_SIDE = 1024;
 
 export type ParsedSlide = {
-  text: string;
-  /** Base64 (tanpa prefix data:) gambar halaman, downscale ~1024px — Fitur DB. Null kalau gagal dirender. */
+  /** Kompatibilitas mundur. Di Pure Vision (Update 18), teks PDF tidak lagi diekstrak. */
+  text?: string;
+  /** Base64 (tanpa prefix data:) gambar halaman, downscale ~1024px — Fitur DB & Pure Vision. Null kalau gagal dirender. */
   imageBase64: string | null;
 };
 
@@ -64,16 +66,20 @@ async function renderSlideImage(page: Awaited<ReturnType<import("pdfjs-dist").PD
 }
 
 async function parsePdf(file: File): Promise<SlideDeck> {
+  // Validasi ukuran file di sisi klien (Task 1A-FV) — cegah browser tab crash / OOM
+  if (file.size > MAX_PDF_BYTES) {
+    throw new Error("Ukuran berkas PDF maksimal 25 MB.");
+  }
+
   // WAJIB varian .min.mjs — entry non-minified ("pdfjs-dist", "build/pdf.mjs",
   // "legacy/build/pdf.mjs") GAGAL dimuat webpack Next.js dengan "TypeError:
   // Object.defineProperty called on non-object". Diverifikasi langsung di browser:
   // dari empat jalur impor yang dicoba, cuma yang minified ini berhasil. Tipenya
   // dideklarasikan di types/pdfjs-min.d.ts. Jangan "dirapikan" jadi "pdfjs-dist".
   const pdfjs = await import("pdfjs-dist/build/pdf.min.mjs");
-  pdfjs.GlobalWorkerOptions.workerSrc = new URL(
-    "pdfjs-dist/build/pdf.worker.min.mjs",
-    import.meta.url
-  ).toString();
+  // Menggunakan file worker statis di /public/pdfjs/ agar Webpack Next.js tidak
+  // mencoba mem-bundle ulang modul worker yang memicu error "Can't handle conflicting asset info".
+  pdfjs.GlobalWorkerOptions.workerSrc = "/pdfjs/pdf.worker.min.mjs";
 
   // Pemuatan dokumen dibungkus terpisah supaya error internal pdf.js yang kriptik
   // tidak bocor mentah-mentah ke user.
@@ -104,35 +110,16 @@ async function parsePdf(file: File): Promise<SlideDeck> {
     throw new Error(`Maksimal ${MAX_SLIDES} halaman — file ini berisi ${doc.numPages}.`);
   }
 
-  // Tahap 1 — teks semua halaman dulu. Dipisah dari render gambar (tahap 2) dan
-  // dibungkus PER HALAMAN: satu halaman gagal dibaca (mis. konten PDF yang aneh)
-  // tidak boleh menggagalkan seluruh upload — sebelumnya ini TIDAK dilindungi,
-  // jadi satu halaman bermasalah bikin seluruh unggahan gagal total.
+  // Pure Vision (Update 18 / Task 1B-PV): Penghapusan total getTextContent().
+  // Slide dirender langsung ke gambar visual canvas JPEG (~1024px) untuk dianalisis oleh Vision model.
   const slides: ParsedSlide[] = [];
   for (let i = 1; i <= doc.numPages; i++) {
     try {
       const page = await doc.getPage(i);
-      const content = await page.getTextContent();
-      const text = content.items
-        .map((it) => ("str" in it ? it.str : ""))
-        .join(" ")
-        .replace(/\s+/g, " ")
-        .trim();
-      slides.push({ text, imageBase64: null });
+      const imageBase64 = await renderSlideImage(page);
+      slides.push({ text: "", imageBase64 });
     } catch {
       slides.push({ text: "", imageBase64: null });
-    }
-  }
-
-  // Tahap 2 — gambar tiap halaman (Fitur DB), belakangan & terpisah dari ekstraksi
-  // teks di atas. Gagal di sini (satu atau semua halaman) TIDAK BOLEH menggagalkan
-  // upload — presentasi tetap bisa dimulai, skor nanti jalan pakai teks saja.
-  for (let i = 1; i <= doc.numPages; i++) {
-    try {
-      const page = await doc.getPage(i);
-      slides[i - 1].imageBase64 = await renderSlideImage(page);
-    } catch {
-      /* dibiarkan null */
     }
   }
 

@@ -1,15 +1,14 @@
 import type { Config } from "tailwindcss";
 
-// Warna dari CSS variables (channel RGB) + <alpha-value> → opacity modifier tetap jalan.
+// Warna dari CSS variables (channel RGB) + <alpha-value> -> opacity modifier tetap jalan.
 const v = (name: string) => `rgb(var(--${name}) / <alpha-value>)`;
 
 const config: Config = {
-  darkMode: "class",
   content: ["./app/**/*.{ts,tsx}", "./components/**/*.{ts,tsx}", "./lib/**/*.{ts,tsx}"],
   theme: {
     extend: {
       colors: {
-        // Palet baru (planning-update-2): token lama dialias → theme-aware.
+        // Palet baru (planning-update-2): token lama dialias -> theme-aware.
         white: v("surface"),
         dominant: v("dominant"),
         secondary: v("secondary"),

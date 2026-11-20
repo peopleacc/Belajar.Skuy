@@ -8,6 +8,7 @@ import {
   KIND_LABEL,
   KIND_ICON,
   STATUS_BADGE,
+  getSessionActionMeta,
   type HistoryRow,
   type SessionKind,
 } from "@/lib/simulationHistory";
@@ -145,6 +146,15 @@ export default function CombinedResultsTable({
                   const kind = sessionKind(session);
                   const statusInfo = STATUS_BADGE[session.status] ?? STATUS_BADGE.done;
                   const href = sessionHref(session);
+                  const actionMeta = getSessionActionMeta(session, scores, Boolean(row.feedback));
+                  const variantCls =
+                    actionMeta.variant === "amber"
+                      ? "bg-amber-500/10 text-amber-700 hover:bg-amber-500/20 border-amber-200"
+                      : actionMeta.variant === "cyan"
+                      ? "bg-cyan-500/10 text-cyan-700 hover:bg-cyan-500/20 border-cyan-200"
+                      : actionMeta.variant === "subtle"
+                      ? "bg-slate-100 text-slate-700 hover:bg-slate-200 border-slate-200"
+                      : "bg-brand-500/10 text-brand-700 hover:bg-brand-500/20 border-brand-200";
 
                   const title =
                     (session.context as { title?: string; role?: string } | null)?.title ||
@@ -224,10 +234,12 @@ export default function CombinedResultsTable({
                             🔍 Detail
                           </button>
                           <Link
-                            href={href}
-                            className="inline-flex items-center gap-1 rounded-lg bg-brand-500/10 px-3 py-1.5 text-xs font-semibold text-brand-600 transition hover:bg-brand-500/20"
+                            href={actionMeta.href}
+                            title={actionMeta.tooltip}
+                            className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold shadow-sm transition ${variantCls}`}
                           >
-                            Laporan ➔
+                            <i className={`bi ${actionMeta.icon}`} />
+                            <span>{actionMeta.label}</span>
                           </Link>
                         </div>
                       </td>

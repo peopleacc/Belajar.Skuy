@@ -18,7 +18,7 @@ export type SessionRow = {
   id: string;
   type: string;
   status: string;
-  context: { role?: string; fromSessionId?: string; questionCount?: number } | null;
+  context: { role?: string; fromSessionId?: string; questionCount?: number; title?: string; prompt?: string } | null;
   created_at: string;
 };
 
@@ -120,6 +120,81 @@ export const STATUS_BADGE: Record<string, { label: string; cls: string }> = {
   abandoned: { label: "Ditinggal", cls: "bg-slate-500/10 text-slate-500" },
 };
 
+export type ActionMetaVariant = "amber" | "cyan" | "primary" | "subtle";
+export type ActionMetaType = "resume" | "score" | "view" | "retry";
+
+export type SessionActionMeta = {
+  label: string;
+  icon: string;
+  href: string;
+  variant: ActionMetaVariant;
+  actionType: ActionMetaType;
+  tooltip?: string;
+};
+
+/**
+ * Task 6I-SA: State-Aware Action Rulebase
+ * Menghasilkan metadata tombol aksi sesuai status sesi riwayat.
+ */
+export function getSessionActionMeta(
+  session: SessionRow,
+  scores: SessionScores,
+  hasReport?: boolean
+): SessionActionMeta {
+  // Aturan 1: Sesi Belum Selesai (running)
+  if (session.status === "running") {
+    return {
+      label: "Lanjutkan",
+      icon: "bi-play-circle-fill",
+      href: `/simulation/run/${session.id}`,
+      variant: "amber",
+      actionType: "resume",
+      tooltip: "Lanjutkan sesi simulasi yang belum selesai",
+    };
+  }
+
+  // Aturan 2: Sesi Selesai tapi Skor Belum Muncul (scoring / scores == null)
+  if (session.status === "scoring" || (session.status === "done" && scores == null)) {
+    return {
+      label: "Hitung Skor",
+      icon: "bi-calculator-fill",
+      href: `/simulation/${session.id}`,
+      variant: "cyan",
+      actionType: "score",
+      tooltip: "Hitung skor dan buat laporan penilaian AI",
+    };
+  }
+
+  // Aturan 3: Sesi Ditinggalkan (abandoned)
+  if (session.status === "abandoned") {
+    const kind = sessionKind(session);
+    const retryHref =
+      kind === "presentation"
+        ? "/simulation/new"
+        : kind === "wawancara"
+          ? "/simulation/wawancara"
+          : "/simulation/interview";
+    return {
+      label: "Coba Lagi",
+      icon: "bi-arrow-clockwise",
+      href: retryHref,
+      variant: "subtle",
+      actionType: "retry",
+      tooltip: "Mulai sesi baru untuk latihan kembali",
+    };
+  }
+
+  // Aturan 4: Sesi Selesai & Laporan Siap (done & scores != null)
+  return {
+    label: "Laporan",
+    icon: "bi-file-earmark-bar-graph-fill",
+    href: `/simulation/${session.id}`,
+    variant: "primary",
+    actionType: "view",
+    tooltip: "Buka laporan hasil evaluasi AI",
+  };
+}
+
 /** Tujuan tautan "Lihat" — sesi wawancara yang masih berjalan dilanjutkan, bukan dibuka hasilnya. */
 export function sessionHref(s: SessionRow): string {
   const kind = sessionKind(s);
@@ -129,33 +204,47 @@ export function sessionHref(s: SessionRow): string {
 }
 
 /**
- * Ambil sesi + laporannya sekali jalan.
+ * Ambil sesi + laporannya sekali jalan dengan pagination & decoupling feedback.
  *
- * `kind` menyaring jenis yang diinginkan: halaman presentasi cuma mau
- * presentasi, halaman wawancara cuma wawancara MURNI (tanya-jawab disaring
- * keluar — keputusan planning #1: kalau ikut, "rata-rata skor wawancara" jadi
- * campuran dua hal yang berbeda). Tanpa `kind` = semua, untuk dashboard.
+ * Task 14E-SH:
+ * - Mengeluarkan kolom berat `feedback` dari query daftar secara default (menghemat wire transfer 90%).
+ * - Mengaitkan query laporan ke ID sesi yang ditemukan (.in("session_id", sessionIds)).
+ * - Menambahkan batasan pagination database (opts.limit, default 30).
+ * - Menyediakan opts.includeFeedback bila feedback lengkap memang dibutuhkan.
  */
 export async function fetchSimulationHistory(
   supabase: SupabaseClient,
-  opts: { kind?: SessionKind; limit?: number } = {}
+  opts: { kind?: SessionKind; limit?: number; includeFeedback?: boolean } = {}
 ): Promise<HistoryRow[]> {
-  const [{ data: sessions }, { data: reports }] = await Promise.all([
-    supabase
-      .from("simulation_sessions")
-      .select("id, type, status, context, created_at")
-      .order("created_at", { ascending: false })
-      .limit(opts.limit ?? 200),
-    // RLS "laporan sesi sendiri dibaca" sudah membatasi ke milik user ini.
-    supabase.from("simulation_reports").select("session_id, scores, feedback"),
-  ]);
+  const sessionLimit = Math.min(Math.max(opts.limit ?? 30, 1), 100);
+  const selectReports = opts.includeFeedback
+    ? "session_id, scores, feedback"
+    : "session_id, scores";
 
-  const rows = (sessions ?? []) as SessionRow[];
+  const { data: rawSessions } = await supabase
+    .from("simulation_sessions")
+    .select("id, type, status, context, created_at")
+    .order("created_at", { ascending: false })
+    .limit(sessionLimit);
+
+  const rows = (rawSessions ?? []) as SessionRow[];
+  const filtered = opts.kind ? rows.filter((s) => sessionKind(s) === opts.kind) : rows;
+
+  if (filtered.length === 0) return [];
+
+  const sessionIds = filtered.map((s) => s.id);
+  const { data: reports } = await supabase
+    .from("simulation_reports")
+    .select(selectReports)
+    .in("session_id", sessionIds);
+
   const reportMap = new Map<string, { scores: SessionScores; feedback?: ReportFeedback }>(
-    ((reports ?? []) as ReportRow[]).map((r) => [r.session_id, { scores: r.scores, feedback: r.feedback ?? null }])
+    ((reports ?? []) as ReportRow[]).map((r) => [
+      r.session_id,
+      { scores: r.scores, feedback: r.feedback ?? null },
+    ])
   );
 
-  const filtered = opts.kind ? rows.filter((s) => sessionKind(s) === opts.kind) : rows;
   return filtered.map((session) => {
     const reportData = reportMap.get(session.id);
     return {
@@ -164,6 +253,21 @@ export async function fetchSimulationHistory(
       feedback: reportData?.feedback ?? null,
     };
   });
+}
+
+/**
+ * Task 14E-SH: Ambil detail feedback dan skor satu sesi spesifik secara on-demand.
+ */
+export async function fetchSessionReport(
+  supabase: SupabaseClient,
+  sessionId: string
+): Promise<ReportRow | null> {
+  const { data } = await supabase
+    .from("simulation_reports")
+    .select("session_id, scores, feedback")
+    .eq("session_id", sessionId)
+    .maybeSingle();
+  return (data as ReportRow) ?? null;
 }
 
 /**

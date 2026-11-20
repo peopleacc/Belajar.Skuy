@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient, supabaseConfigured } from "@/lib/supabase/server";
 import { apiFetch } from "@/lib/api";
+import { stripEssaySecrets } from "@/lib/quiz";
 
 const PASS_SCORE = 70;
 
@@ -56,14 +57,17 @@ export async function POST(request: Request) {
 
   // RLS memastikan kuis ini milik modul si user. Fetch FRESH dari DB (bukan dari client) —
   // di sinilah key_points/model_answer/correct_answer boleh dibaca (server-only).
+  // Task 15D-QS (F25 / F34): Ambil content_id langsung dari record kuis internal DB
   const { data: quiz } = await supabase
     .from("quizzes")
-    .select("id, questions")
+    .select("id, content_id, questions")
     .eq("id", quizId)
     .maybeSingle();
   if (!quiz) {
     return NextResponse.json({ error: "Kuis tidak ditemukan." }, { status: 404 });
   }
+
+  const realContentId = quiz.content_id || null;
 
   const questions = quiz.questions as AnyQuestion[];
   const total = questions.length;
@@ -120,10 +124,24 @@ export async function POST(request: Request) {
     }
 
     const gradeByNumber = new Map(grades.map((g) => [g.question_number, g]));
+
+    // Task 15D-QS (F26 / F35): Tolak 502 jika AI tidak mengembalikan nilai untuk sebagian soal esai
+    const missingGrades = essayQuestions.filter((q) => !gradeByNumber.has(q.question_number));
+    if (missingGrades.length > 0) {
+      console.warn(
+        "[quiz/submit] AI tidak mengembalikan nilai untuk soal esai:",
+        missingGrades.map((m) => m.question_number)
+      );
+      return NextResponse.json(
+        { error: "AI tidak berhasil menilai seluruh jawaban esai secara lengkap. Silakan coba submit kembali." },
+        { status: 502 }
+      );
+    }
+
     for (const q of essayQuestions) {
       const text = answers[String(q.question_number)] ?? "";
-      const g = gradeByNumber.get(q.question_number);
-      const score = g?.score ?? 0;
+      const g = gradeByNumber.get(q.question_number)!;
+      const score = g.score;
       scores.push(score);
       storedAnswers[String(q.question_number)] = {
         type: "essay",
@@ -150,17 +168,33 @@ export async function POST(request: Request) {
     );
   }
 
-  // Lulus → reset kuota chatbot bab ini: Supabase (source of truth) + Redis (lapis cepat)
+  // Task 15D-QS (F23 & F25): Jika kuis bab lulus (score >= 70):
+  // 1. Terbitkan status completed_at sah pada tabel content_progress
+  // 2. Reset kuota chatbot bab ini
   let quotaReset = false;
-  if (score >= PASS_SCORE && contentId) {
+  if (score >= PASS_SCORE && realContentId) {
+    const nowIso = new Date().toISOString();
+
+    // 1. Tandai bab selesai di content_progress
+    await supabase.from("content_progress").upsert(
+      {
+        user_id: user.id,
+        content_id: realContentId,
+        completed_at: nowIso,
+        updated_at: nowIso,
+      },
+      { onConflict: "user_id,content_id" }
+    );
+
+    // 2. Reset counter chat bot bab
     const { error: resetErr } = await supabase.from("chatbot_sessions").upsert(
-      { user_id: user.id, content_id: contentId, counter_messages: 0 },
+      { user_id: user.id, content_id: realContentId, counter_messages: 0 },
       { onConflict: "user_id,content_id" }
     );
     quotaReset = !resetErr;
 
     try {
-      await apiFetch(`/api/chat/${contentId}/reset`, {
+      await apiFetch(`/api/chat/${realContentId}/reset`, {
         method: "POST",
         body: JSON.stringify({ userId: user.id }),
       });
@@ -169,6 +203,9 @@ export async function POST(request: Request) {
     }
   }
 
+  // Task 15D-QS (F19 & F24): Kembalikan reviewQuestions (kunci & pembahasan) hanya pada respon submit kuis
+  const reviewQuestions = stripEssaySecrets(quiz.questions as Record<string, unknown>[]);
+
   return NextResponse.json({
     attempt,
     score,
@@ -176,5 +213,6 @@ export async function POST(request: Request) {
     total,
     passed: score >= PASS_SCORE,
     quotaReset,
+    reviewQuestions,
   });
 }

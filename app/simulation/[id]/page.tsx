@@ -3,6 +3,8 @@ import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
 import RescoreButton from "@/components/simulation/RescoreButton";
 import StartQaButton from "@/components/simulation/StartQaButton";
+import RetrySimulationButton from "@/components/simulation/RetrySimulationButton";
+import AutoReportPoller from "@/components/simulation/AutoReportPoller";
 import SessionBreakdownViewer, {
   type SegmentDetailRow,
   type PerSlideFeedback,
@@ -168,10 +170,10 @@ export default async function SimulationDetailPage({
       ? `Simulasi Wawancara${session.context?.role ? ` · ${session.context.role}` : ""}`
       : "Simulasi Presentasi";
 
-  const [{ data: segments }, { data: reportRow }] = await Promise.all([
+  let [{ data: segments, error: segErr }, { data: reportRow }] = await Promise.all([
     supabase
       .from("simulation_segments")
-      .select("index, prompt_text, transcript, speech_metrics, visual_metrics")
+      .select("index, prompt_text, transcript, speech_metrics, visual_metrics, slide_image_url")
       .eq("session_id", id)
       .order("index"),
     supabase
@@ -180,6 +182,15 @@ export default async function SimulationDetailPage({
       .eq("session_id", id)
       .maybeSingle(),
   ]);
+
+  if (segErr && (segErr as { message?: string }).message?.includes("slide_image_url")) {
+    const { data: fallbackSegments } = await supabase
+      .from("simulation_segments")
+      .select("index, prompt_text, transcript, speech_metrics, visual_metrics")
+      .eq("session_id", id)
+      .order("index");
+    segments = (fallbackSegments ?? []).map((s) => ({ ...s, slide_image_url: null }));
+  }
 
   const rows = (segments ?? []) as SegmentDetailRow[];
   const report = (reportRow ?? null) as ReportRow | null;
@@ -277,12 +288,19 @@ export default async function SimulationDetailPage({
           </Link>{" "}
           / <span className="font-semibold text-brand-600">Hasil Evaluasi Sesi</span>
         </nav>
-        <span className="text-xs text-slate-400 font-medium">
-          📅 {new Date(session.created_at).toLocaleString("id-ID", {
-            dateStyle: "medium",
-            timeStyle: "short",
-          })}
-        </span>
+        <div className="flex flex-wrap items-center gap-3">
+          <span className="text-xs text-slate-400 font-medium">
+            <i className="bi bi-calendar3 mr-1.5 text-slate-400"></i>{new Date(session.created_at).toLocaleString("id-ID", {
+              dateStyle: "medium",
+              timeStyle: "short",
+            })}
+          </span>
+          <RetrySimulationButton
+            session={session}
+            variant="header"
+            label="Ulangi Sesi"
+          />
+        </div>
       </div>
 
       {report ? (
@@ -290,7 +308,7 @@ export default async function SimulationDetailPage({
           {/* ═══════════════════════════════════════════════════════════════════════════════
               TINGKAT 1 (GAMBAR 2): HERO SCORE CARD - RATA-RATA NILAI KESELURUHAN
              ═══════════════════════════════════════════════════════════════════════════════ */}
-          <div className="relative overflow-hidden rounded-3xl border border-slate-200/80 bg-gradient-to-br from-slate-900 via-ink-900 to-slate-800 p-8 text-white shadow-2xl">
+          <div className="relative overflow-hidden rounded-2xl border border-slate-800 bg-gradient-to-br from-slate-900 via-ink-900 to-slate-800 p-8 text-white shadow-lg">
             <div className="absolute -right-16 -top-16 h-64 w-64 rounded-full bg-brand-500/10 blur-3xl pointer-events-none" />
             <div className="relative z-10 flex flex-col items-center text-center">
               <span className="rounded-full bg-white/10 px-4 py-1 text-xs font-bold uppercase tracking-widest text-brand-300 backdrop-blur-md">
@@ -530,7 +548,7 @@ export default async function SimulationDetailPage({
           {report.feedback.qualitative_note && (
             <div className={`${CARD} p-6`}>
               <h3 className="mb-3 text-xs font-bold uppercase tracking-wider text-slate-400">
-                💬 Catatan Kualitatif Penguji AI
+                <i className="bi bi-chat-quote-fill mr-1.5 text-brand-500"></i>Catatan Kualitatif Penguji AI
               </h3>
               <p className="rounded-xl bg-brand-500/5 p-4 text-sm leading-relaxed text-slate-700">
                 {report.feedback.qualitative_note}
@@ -583,11 +601,37 @@ export default async function SimulationDetailPage({
             </div>
 
             <SessionBreakdownViewer
+              sessionId={id}
               segments={rows}
               feedbacks={perSlideFb}
               isInterview={isInterview}
               totalItems={totalItems}
             />
+          </div>
+
+          {/* Banner Aksi Latihan Ulang (Zero-Token Retry Banner) */}
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 rounded-2xl border border-indigo-100/90 bg-gradient-to-br from-white via-white to-indigo-50/50 p-6 shadow-sm">
+            <div className="flex items-start gap-3.5">
+              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-indigo-50 border border-indigo-100 text-indigo-600 text-lg">
+                <i className="bi bi-arrow-repeat"></i>
+              </span>
+              <div>
+                <h4 className="text-sm font-bold text-slate-800">
+                  Ingin Memperbaiki Skor Evaluasi?
+                </h4>
+                <p className="mt-1 text-xs text-slate-500 max-w-xl leading-relaxed">
+                  Lakukan simulasi ulang dengan {isInterview ? "pertanyaan wawancara" : "materi slide"} yang sama persis secara instan tanpa mengonsumsi kuota token AI baru.
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2.5 w-full sm:w-auto shrink-0">
+              <RetrySimulationButton
+                session={session}
+                variant="primary"
+                label="Latihan Ulang Sekarang"
+                className="w-full sm:w-auto"
+              />
+            </div>
           </div>
 
           {/* Fitur Tanya Jawab Lanjutan */}
@@ -604,14 +648,7 @@ export default async function SimulationDetailPage({
           )}
         </>
       ) : (
-        <div className={`${CARD} p-8 text-center space-y-4`}>
-          <p className="text-base font-semibold text-slate-700">
-            {selesai
-              ? "Sesi simulasi telah selesai, namun laporan belum dikomputasi."
-              : "Sesi simulasi masih berjalan — laporan akan tersedia setelah sesi selesai."}
-          </p>
-          {selesai && <RescoreButton sessionId={id} label="🧮 Hitung & Buat Laporan Skor Sekarang" />}
-        </div>
+        <AutoReportPoller sessionId={id} isFinished={selesai} />
       )}
     </main>
   );

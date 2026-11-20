@@ -2,155 +2,108 @@ import { cookies } from "next/headers";
 import Link from "next/link";
 import SiteHeader from "@/components/SiteHeader";
 import SiteFooter from "@/components/SiteFooter";
+import HeroSpread from "@/components/landing/HeroSpread";
+import FeatureLab from "@/components/landing/FeatureLab";
+import PracticeSandbox from "@/components/landing/PracticeSandbox";
+import HowItWorksStory from "@/components/landing/HowItWorksStory";
 import PricingPlans from "@/components/PricingPlans";
-import HeroCarousel from "@/components/HeroCarousel";
 import { currencyForLang, getPlans } from "@/lib/plans";
 import { LANG_COOKIE, getDict, normalizeLang } from "@/lib/i18n";
+import { getSessionUser } from "@/lib/session";
 
-// Rounding + shadow card DISAMAKAN PERSIS dengan card dashboard
-// (lihat NewCourseCard.tsx / dashboard/page.tsx: "rounded-sm bg-white ... shadow-card").
-const CARD = "rounded-sm bg-white shadow-card";
-
+/**
+ * Landing Page Utama belajar.skuy (Planning 8 - Task 8B-LP)
+ * - Server Component (SSR) murni tanpa JavaScript payload berat.
+ * - Mengintegrasikan Hero 3D Spread, Interactive Feature Lab, 1-Minute Practice Sandbox,
+ *   dan Alur Cara Kerja Terpadu dari paket Redesign/ berbasis Tailwind CSS.
+ * - Strict Zero Emojis (Aturan F): Memakai Bootstrap Icons.
+ */
 export default async function Home() {
   const store = await cookies();
   const lang = normalizeLang(store.get(LANG_COOKIE)?.value);
   const t = getDict(lang);
-  const plans = await getPlans(currencyForLang(lang));
+  const isId = lang === "id";
+
+  // Data fetching di RSC secara paralel (zero flash, zero layout shift)
+  const [user, plans] = await Promise.all([
+    getSessionUser(),
+    getPlans(currencyForLang(lang)),
+  ]);
 
   return (
-    <div className="min-h-screen bg-dominant text-slate-800">
-      <SiteHeader lang={lang} t={t} />
+    <div className="min-h-screen bg-dominant text-slate-800 transition-colors duration-300">
+      {/* ── 1. Navbar "Blade & Blend" (Task 8A-NV) ─────────────────────────── */}
+      <SiteHeader lang={lang} t={t} user={user} />
 
-      <main className="pt-20">
-        {/* ── Hero (Fitur EA — carousel: slide 1 konten lama, slide 2 showcase simulasi) ── */}
-        <section className="px-5 py-20 md:px-10 md:py-28">
-          <div className="mx-auto max-w-7xl">
-            <HeroCarousel t={t} />
-          </div>
-        </section>
+      <main id="main" className="pt-[84px]">
+        {/* ── 2. Hero Section 3D Spread (Task 8B-LP) ─────────────────────────── */}
+        <HeroSpread lang={lang} t={t} />
 
-        {/* ── Fitur ──────────────────────────────────────────────── */}
-        <section id="features" className="border-y border-border bg-surface-2 px-5 py-24 md:px-10">
+        {/* ── 3. Interactive Feature Lab ─────────────────────────────────────── */}
+        <FeatureLab lang={lang} t={t} />
+
+        {/* ── 4. 1-Minute Practice Sandbox (On-Dark Stage) ───────────────────── */}
+        <PracticeSandbox lang={lang} />
+
+        {/* ── 5. Alur Cara Kerja & Visual Story ─────────────────────────────── */}
+        <HowItWorksStory lang={lang} t={t} />
+
+        {/* ── 6. Pratinjau Paket Belajar (Pricing Preview) ───────────────────── */}
+        <section id="pricing" className="scroll-mt-24 border-y border-border/80 bg-surface-2 px-4 py-24 sm:px-6 md:px-10">
           <div className="mx-auto max-w-7xl">
-            <div className="mb-16 space-y-3 text-center">
+            <div className="mb-14 space-y-3 text-center">
               <span className="text-xs font-bold uppercase tracking-[0.2em] text-brand-500">
-                {t.features.eyebrow}
+                {isId ? "Investasi Belajar" : "Flexible Plans"}
               </span>
-              <h2 className="text-3xl font-bold tracking-tight md:text-4xl">
-                {t.features.title}
+              <h2 className="text-3xl sm:text-4xl lg:text-5xl font-extrabold tracking-tight text-slate-900">
+                {isId ? "Ritmemu. Paketmu." : "Your pace. Your plan."}
               </h2>
-              <p className="mx-auto max-w-2xl text-slate-500">{t.features.subtitle}</p>
-            </div>
-
-            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-              {t.features.items.map((f) => (
-                <div
-                  key={f.title}
-                  className={`${CARD} flex flex-col p-8 transition duration-200 hover:-translate-y-1 hover:shadow-lg`}
-                >
-                  <span className="mb-6 flex h-14 w-14 items-center justify-center rounded-2xl bg-brand-500/10 text-2xl text-brand-500">
-                    <i className={`bi ${f.icon}`}></i>
-                  </span>
-                  <h3 className="mb-3 text-xl font-bold">{f.title}</h3>
-                  <p className="mb-6 flex-1 leading-relaxed text-slate-500">{f.desc}</p>
-                  <ul className="space-y-3 pt-2">
-                    {f.bullets.map((b) => (
-                      <li key={b} className="flex items-center gap-3 text-sm font-medium">
-                        <i className="bi bi-check-circle-fill text-brand-500"></i>
-                        {b}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              ))}
-            </div>
-          </div>
-        </section>
-
-        {/* ── Cara kerja ─────────────────────────────────────────── */}
-        <section id="how" className="px-5 py-24 md:px-10">
-          <div className="mx-auto max-w-7xl">
-            <div className="mb-20 space-y-3 text-center">
-              <span className="text-xs font-bold uppercase tracking-[0.2em] text-brand-500">
-                {t.how.eyebrow}
-              </span>
-              <h2 className="text-3xl font-bold tracking-tight md:text-4xl">{t.how.title}</h2>
-              <p className="mx-auto max-w-2xl text-slate-500">{t.how.subtitle}</p>
-            </div>
-
-            <div className="space-y-20">
-              {t.how.steps.map((s, i) => (
-                <div
-                  key={s.title}
-                  className={`flex flex-col items-center gap-12 lg:gap-20 ${
-                    i % 2 === 1 ? "md:flex-row-reverse" : "md:flex-row"
-                  }`}
-                >
-                  <div className="flex-1 space-y-5">
-                    <span className="flex h-12 w-12 items-center justify-center rounded-full border border-border bg-white text-xl font-bold text-brand-500">
-                      {i + 1}
-                    </span>
-                    <h3 className="text-2xl font-bold tracking-tight md:text-3xl">{s.title}</h3>
-                    <p className="text-lg leading-relaxed text-slate-500">{s.desc}</p>
-                    <p className="flex items-center gap-3 font-semibold text-brand-500">
-                      <i className={`bi ${s.icon}`}></i>
-                      {s.note}
-                    </p>
-                  </div>
-
-                  <div className="w-full flex-1">
-                    <div className={`${CARD} flex aspect-video items-center justify-center`}>
-                      <i className={`bi ${s.icon} text-6xl text-brand-500/25`}></i>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </section>
-
-        {/* ── Harga ──────────────────────────────────────────────── */}
-        <section id="pricing" className="border-y border-border bg-surface-2 px-5 py-24 md:px-10">
-          <div className="mx-auto max-w-7xl">
-            <div className="mb-16 space-y-3 text-center">
-              <h2 className="text-3xl font-bold tracking-tight md:text-4xl">{t.pricing.title}</h2>
-              <p className="mx-auto max-w-2xl text-slate-500">{t.pricing.subtitle}</p>
+              <p className="mx-auto max-w-2xl text-sm sm:text-base text-slate-500">
+                {t.pricing.subtitle}
+              </p>
             </div>
 
             <PricingPlans t={t} plans={plans} />
 
-            <div className="mt-10 text-center">
+            <div className="mt-12 text-center">
               <Link
                 href="/pricing"
-                className="inline-flex items-center gap-2 text-sm font-semibold text-brand-500 transition hover:gap-3"
+                className="inline-flex items-center gap-2 rounded-xl border border-border/80 bg-surface px-6 py-3 text-sm font-bold text-slate-700 shadow-sm transition hover:border-slate-400 hover:text-brand-500"
               >
-                {t.pricing.seeDetail}
-                <i className="bi bi-arrow-right"></i>
+                <span>{isId ? "Bandingkan Seluruh 5 Paket Belajar & Rincian Fitur" : "Compare All 5 Plans & Feature Matrix"}</span>
+                <i className="bi bi-arrow-right text-xs"></i>
               </Link>
             </div>
           </div>
         </section>
 
-        {/* ── CTA penutup ────────────────────────────────────────── */}
-        {/* ink-900 = token yang sengaja gelap konstan di kedua tema */}
-        <section className="px-5 py-24 md:px-10">
-          <div className="mx-auto max-w-7xl rounded-sm bg-ink-900 p-12 text-center shadow-card md:p-20">
-            <h2 className="mx-auto max-w-3xl text-3xl font-bold leading-tight tracking-tight text-light md:text-4xl">
-              {t.cta.title}
-            </h2>
-            <p className="mx-auto mt-6 max-w-2xl text-light-muted">{t.cta.desc}</p>
+        {/* ── 7. Closing CTA Banner (On-Dark Section) ────────────────────────── */}
+        <section className="closing-section on-dark-section bg-[#283157] px-4 py-20 text-white sm:px-6 md:px-10" data-header-dark="true">
+          <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-8 sm:flex-row">
+            <div className="space-y-3 text-center sm:text-left">
+              <h2 className="text-3xl sm:text-4xl lg:text-5xl font-extrabold tracking-tight text-white">
+                {isId ? "Yuk, mulai sekarang." : "Let's begin today."}
+              </h2>
+              <p className="max-w-xl text-base text-[#d7daea]">
+                {isId
+                  ? "Dari rasa penasaran menjadi pemahaman nyata. Coba materi kursus dan simulasi AI pertamamu gratis."
+                  : "From simple curiosity to true mastery. Start your first AI lesson and speaking simulation for free."}
+              </p>
+            </div>
+
             <Link
               href="/register"
-              className="mt-10 inline-block rounded-xl bg-white px-10 py-4 text-base font-bold text-brand-500 transition hover:opacity-90"
+              className="inline-flex h-14 shrink-0 items-center justify-center gap-2 rounded-xl bg-white px-8 text-base font-bold text-[#283157] shadow-xl transition-all duration-200 hover:-translate-y-0.5 hover:bg-slate-100 active:translate-y-0"
             >
-              {t.cta.button}
+              <span>{isId ? "Mulai Belajar Gratis" : "Start Learning Free"}</span>
+              <i className="bi bi-arrow-up-right text-xs"></i>
             </Link>
-            <p className="mt-5 text-sm text-light-muted">{t.cta.note}</p>
           </div>
         </section>
-
-        <SiteFooter t={t} />
       </main>
+
+      {/* ── 8. Footer Terpadu (Task 8A-NV) ─────────────────────────────────── */}
+      <SiteFooter t={t} />
     </div>
   );
 }

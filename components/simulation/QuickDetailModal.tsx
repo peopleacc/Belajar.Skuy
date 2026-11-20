@@ -82,14 +82,17 @@ export default function QuickDetailModal({
               </span>
             </div>
             <h2 className="text-xl font-bold tracking-tight text-slate-900">{title}</h2>
-            <p className="text-xs text-slate-400">📅 {formattedDate}</p>
+            <p className="text-xs text-slate-400 flex items-center gap-1.5">
+              <i className="bi bi-calendar3"></i>
+              <span>{formattedDate}</span>
+            </p>
           </div>
           <button
             onClick={onClose}
-            className="rounded-lg border border-slate-200 p-2 text-slate-400 transition hover:bg-slate-50 hover:text-slate-600"
+            className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-400 transition hover:bg-slate-50 hover:text-slate-600"
             title="Tutup Modal"
           >
-            ✕
+            <i className="bi bi-x-lg"></i>
           </button>
         </div>
 
@@ -233,8 +236,9 @@ export default function QuickDetailModal({
 
                 {feedback.strengths && feedback.strengths.length > 0 && (
                   <div className="rounded-xl border border-emerald-200 bg-emerald-50/50 p-4">
-                    <p className="mb-2 text-xs font-semibold text-emerald-700">
-                      🌟 Poin Kelebihan (Strengths)
+                    <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-emerald-700">
+                      <i className="bi bi-star-fill text-emerald-500"></i>
+                      <span>Poin Kelebihan (Strengths)</span>
                     </p>
                     <ul className="space-y-1 text-xs text-slate-700">
                       {feedback.strengths.map((s, i) => (
@@ -249,8 +253,9 @@ export default function QuickDetailModal({
 
                 {feedback.improvements && feedback.improvements.length > 0 && (
                   <div className="rounded-xl border border-amber-200 bg-amber-50/50 p-4">
-                    <p className="mb-2 text-xs font-semibold text-amber-700">
-                      💡 Saran Perbaikan (Improvements)
+                    <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-amber-700">
+                      <i className="bi bi-lightbulb-fill text-amber-500"></i>
+                      <span>Saran Perbaikan (Improvements)</span>
                     </p>
                     <ul className="space-y-1 text-xs text-slate-700">
                       {feedback.improvements.map((imp, i) => (
@@ -264,9 +269,20 @@ export default function QuickDetailModal({
                 )}
               </div>
             ) : (
-              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-center text-xs text-slate-500">
-                {feedback?.unavailable_reason ||
-                  "Ringkasan evaluasi AI belum tersedia untuk sesi ini."}
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-center text-xs text-slate-500 space-y-2">
+                <p>
+                  {feedback?.unavailable_reason ||
+                    "Ringkasan evaluasi AI lengkap dapat dilihat pada lembar laporan."}
+                </p>
+                <div>
+                  <Link
+                    href={href}
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-brand-500 px-3.5 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-brand-600"
+                  >
+                    <span>Buka Laporan Penuh</span>
+                    <i className="bi bi-arrow-right"></i>
+                  </Link>
+                </div>
               </div>
             )}
           </div>
@@ -285,7 +301,8 @@ export default function QuickDetailModal({
             href={href}
             className="inline-flex items-center gap-2 rounded-xl bg-brand-500 px-5 py-2.5 text-xs font-semibold text-white shadow-md transition hover:bg-brand-600"
           >
-            Buka Laporan Lengkap ➔
+            <span>Buka Laporan Lengkap</span>
+            <i className="bi bi-arrow-right"></i>
           </Link>
         </div>
       </div>

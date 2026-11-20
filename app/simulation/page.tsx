@@ -7,6 +7,9 @@ import { getSessionUser } from "@/lib/session";
 import { createClient } from "@/lib/supabase/server";
 import ProgressChart from "@/components/ProgressChart";
 import SessionHistoryTable from "@/components/simulation/SessionHistoryTable";
+import { CameraRubricButton } from "@/components/simulation/CameraRubricModal";
+import ActiveSessionBanner from "@/components/simulation/ActiveSessionBanner";
+import type { ActiveSessionData } from "@/components/simulation/ActiveSessionModal";
 import { buildTrendPoints, buildDailyCounts } from "@/lib/scoreTrend";
 import {
   fetchSimulationHistory,
@@ -37,7 +40,8 @@ export default async function SimulationHome({
   if (!user) redirect("/login");
 
   const supabase = await createClient();
-  const history = await fetchSimulationHistory(supabase);
+  // Task 14E-SH: Limit 30 riwayat simulasi terbaru untuk pagination database
+  const history = await fetchSimulationHistory(supabase, { limit: 30 });
 
   // Sesi yang punya laporan DENGAN skor — ini yang dipakai chart (DoD: sesi
   // belum dinilai jangan menarik rata-rata secara menyesatkan, tapi tetap
@@ -79,16 +83,57 @@ export default async function SimulationHome({
   const page = Number.isFinite(rawPage) ? Math.min(Math.max(rawPage, 1), totalPages) : 1;
   const pageRows = history.slice((page - 1) * PER_PAGE, page * PER_PAGE);
 
+  // Task 6J-AS: Cek apakah user memiliki sesi aktif berjalan (< 2 jam)
+  const twoHoursAgoIso = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
+  const activeSessionRow = history.find(
+    (r) => r.session.status === "running" && r.session.created_at >= twoHoursAgoIso
+  );
+  let activeSessionData: ActiveSessionData | null = null;
+  if (activeSessionRow) {
+    const { count: answeredCount } = await supabase
+      .from("simulation_segments")
+      .select("id", { count: "exact", head: true })
+      .eq("session_id", activeSessionRow.session.id);
+
+    const totalItems =
+      activeSessionRow.session.context?.questionCount ||
+      (activeSessionRow.session.context as any)?.questions?.length ||
+      (activeSessionRow.session.context as any)?.totalSlides ||
+      5;
+
+    const title =
+      activeSessionRow.session.context?.title ||
+      activeSessionRow.session.context?.role ||
+      KIND_LABEL[sessionKind(activeSessionRow.session)];
+
+    activeSessionData = {
+      id: activeSessionRow.session.id,
+      type: activeSessionRow.session.type,
+      created_at: activeSessionRow.session.created_at,
+      title,
+      answeredCount: answeredCount ?? 0,
+      totalItems,
+    };
+  }
+
   return (
     <main className="mx-auto max-w-6xl p-8">
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold tracking-tight md:text-3xl">
+      <div className="mb-8 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight md:text-3xl">
           {t.portal.modes.simulation.title}
         </h1>
         <p className="mt-1 text-sm text-slate-500">
           {td.subtitle}
         </p>
+        </div>
+        <div className="shrink-0">
+          <CameraRubricButton variant="pill" label="Petunjuk Penilaian Kamera" />
+        </div>
       </div>
+
+      {/* Task 6J-AS: Banner Peringatan Sesi Aktif Berjalan */}
+      {activeSessionData && <ActiveSessionBanner session={activeSessionData} />}
 
       {/* ── 3 Quick Action Cards (Presentasi, Wawancara, Interview) ── */}
       <section className="mb-8 grid gap-6 md:grid-cols-3">

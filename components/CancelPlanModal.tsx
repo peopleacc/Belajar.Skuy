@@ -69,7 +69,7 @@ export default function CancelPlanModal({
       />
 
       {/* Konten Modal */}
-      <div className="relative z-10 w-full max-w-lg overflow-hidden rounded-2xl bg-white p-6 shadow-2xl transition-all sm:p-8 dark:bg-ink-800">
+      <div className="relative z-10 w-full max-w-lg overflow-hidden rounded-2xl bg-white p-6 shadow-2xl transition-all sm:p-8">
         <div className="flex items-start gap-4">
           <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-rose-500/10 text-2xl text-rose-500">
             <i className="bi bi-exclamation-triangle-fill"></i>
@@ -78,18 +78,18 @@ export default function CancelPlanModal({
           <div className="flex-1">
             <h3
               id="cancel-modal-title"
-              className="text-xl font-bold text-slate-800 dark:text-light"
+              className="text-xl font-bold text-slate-800"
             >
               {m.title}
             </h3>
-            <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
+            <p className="mt-2 text-sm text-slate-500">
               {m.desc}
             </p>
           </div>
         </div>
 
         {/* Poin-poin peringatan */}
-        <div className="mt-5 space-y-3 rounded-xl border border-rose-100 bg-rose-50/50 p-4 text-xs text-rose-900 dark:border-rose-900/30 dark:bg-rose-950/20 dark:text-rose-200">
+        <div className="mt-5 space-y-3 rounded-xl border border-rose-100 bg-rose-50/50 p-4 text-xs text-rose-900">
           <div className="flex items-start gap-2.5">
             <i className="bi bi-x-circle-fill shrink-0 text-rose-500 mt-0.5"></i>
             <span>{m.point1}</span>
@@ -105,7 +105,7 @@ export default function CancelPlanModal({
         </div>
 
         {error && (
-          <div className="mt-4 rounded-lg bg-rose-100 p-3 text-xs font-semibold text-rose-700 dark:bg-rose-900/40 dark:text-rose-300">
+          <div className="mt-4 rounded-lg bg-rose-100 p-3 text-xs font-semibold text-rose-700">
             {error}
           </div>
         )}
@@ -116,7 +116,7 @@ export default function CancelPlanModal({
             type="button"
             onClick={onClose}
             disabled={loading}
-            className="rounded-xl border border-border px-5 py-3 text-sm font-semibold text-slate-700 transition hover:bg-surface-2 disabled:opacity-50 dark:text-light"
+            className="rounded-xl border border-border px-5 py-3 text-sm font-semibold text-slate-700 transition hover:bg-surface-2 disabled:opacity-50"
           >
             {m.cancelBtn}
           </button>

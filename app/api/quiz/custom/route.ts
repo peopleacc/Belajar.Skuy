@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient, supabaseConfigured } from "@/lib/supabase/server";
 import { apiFetchForm, expressErrorMessage } from "@/lib/api";
-import { stripEssaySecrets } from "@/lib/quiz";
+import { stripExamSecrets } from "@/lib/quiz";
 
 // Batas durasi fungsi di hosting (Vercel). Harus >= batas fetch ke Express
 // (EXPRESS_TIMEOUT_MS di lib/api.ts) supaya bukan lapisan ini yang memutus duluan.
@@ -98,9 +98,9 @@ export async function POST(request: Request) {
     const data = await res.json().catch(() => ({
       error: "Respons tidak valid dari API service.",
     }));
-    // Fitur Q — kunci jawaban esai tidak boleh sampai ke browser.
+    // Task 15D-QS (F19 & F24) — Hapus kunci PG & pembahasan pada fase ujian sebelum dikirim ke client
     if (data?.quiz?.questions) {
-      data.quiz.questions = stripEssaySecrets(data.quiz.questions);
+      data.quiz.questions = stripExamSecrets(data.quiz.questions);
     }
     return NextResponse.json(data, { status: res.status });
   } catch (err) {

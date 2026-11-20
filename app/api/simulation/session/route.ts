@@ -37,6 +37,7 @@ export async function POST(request: Request) {
         userId: user.id,
         type,
         slides: body.slides,
+        totalSlides: body.totalSlides,
         context: body.context,
         settings: body.settings,
       }),
@@ -46,4 +47,46 @@ export async function POST(request: Request) {
   } catch (err) {
     return NextResponse.json({ error: expressErrorMessage(err, "npm run dev:simulation") }, { status: 502 });
   }
+}
+
+// EV09: GET status kesiapan sesi dan laporan untuk polling UI tanpa memicu 405
+export async function GET(request: Request) {
+  if (!supabaseConfigured) {
+    return NextResponse.json({ error: "Supabase belum dikonfigurasi." }, { status: 503 });
+  }
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return NextResponse.json({ error: "Silakan login dulu." }, { status: 401 });
+  }
+
+  const { searchParams } = new URL(request.url);
+  const sessionId = searchParams.get("sessionId") || searchParams.get("id");
+  if (!sessionId) {
+    return NextResponse.json({ error: "sessionId wajib disertakan." }, { status: 400 });
+  }
+
+  const { data: session, error: sessErr } = await supabase
+    .from("simulation_sessions")
+    .select("id, status, type, created_at, finished_at")
+    .eq("id", sessionId)
+    .eq("user_id", user.id)
+    .maybeSingle();
+
+  if (sessErr || !session) {
+    return NextResponse.json({ error: "Sesi tidak ditemukan." }, { status: 404 });
+  }
+
+  const { data: report } = await supabase
+    .from("simulation_reports")
+    .select("session_id")
+    .eq("session_id", sessionId)
+    .maybeSingle();
+
+  return NextResponse.json({
+    session,
+    hasReport: Boolean(report),
+  });
 }

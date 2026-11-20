@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient, supabaseConfigured } from "@/lib/supabase/server";
 import { apiFetch, expressErrorMessage } from "@/lib/api";
-import { computeChapterStates, collectCompletedContentIds } from "@/lib/chapterState";
 
 // Batas durasi fungsi di hosting (Vercel). Harus >= batas fetch ke Express
 // (EXPRESS_TIMEOUT_MS di lib/api.ts) supaya bukan lapisan ini yang memutus duluan.
@@ -12,6 +11,7 @@ export const maxDuration = 120;
 // Generate materi satu bab (Modul 5; soal digenerate terpisah sejak Fitur J).
 // Fitur X — dipakai juga untuk GENERATE ULANG bab (`regenerate` + `instruction`).
 // Kepemilikan dicek lewat RLS: kalau bab bukan milik user, select di bawah kosong.
+// Track 13 — Bebas generate bab mana saja (Non-Linear Chapter Generation) tanpa terhambat status locked.
 export async function POST(request: Request) {
   const body = await request.json().catch(() => ({}));
   const contentId = typeof body.contentId === "string" ? body.contentId : "";
@@ -46,33 +46,9 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Bab tidak ditemukan." }, { status: 404 });
   }
 
-  // Fitur Z — defense in depth: tolak generate untuk bab yang masih TERKUNCI. UI sudah
-  // mencegahnya, tapi endpoint ini tetap bisa dipanggil langsung (devtools/curl), jadi gate
-  // sekuensial Fitur K harus ditegakkan di sini juga.
-  const [{ data: siblings }, { data: progressRows }, { data: allAttempts }] = await Promise.all([
-    supabase
-      .from("contents")
-      .select("id, body")
-      .eq("module_id", owned.module_id)
-      .order("chapter_number"),
-    supabase.from("content_progress").select("content_id, completed_at"),
-    supabase.from("quiz_attempts").select("score, quizzes(content_id)"),
-  ]);
-
-  const rows = (siblings ?? []) as { id: string; body: Record<string, unknown> | null }[];
-  const completedSet = collectCompletedContentIds(progressRows, allAttempts);
-
-  const states = computeChapterStates(
-    rows.map((r) => ({ body: r.body, completed: completedSet.has(r.id) }))
-  );
-  const targetIdx = rows.findIndex((r) => r.id === contentId);
-  if (targetIdx >= 0 && states[targetIdx] === "locked") {
-    return NextResponse.json(
-      { error: "Bab ini masih terkunci. Selesaikan bab sebelumnya dulu." },
-      { status: 400 }
-    );
-  }
-
+  // Track 13: Pelepasan gate sekuensial lama. Pengguna berhak meng-generate materi
+  // bab mana pun dalam modul miliknya secara langsung. Kuota harian (chapterGenerationsPerDay)
+  // tetap ditegakkan secara aman oleh Express backend service.
   try {
     const res = await apiFetch("/api/content/generate", {
       method: "POST",

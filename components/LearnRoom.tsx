@@ -12,6 +12,7 @@ import VideoSupport from "@/components/VideoSupport";
 import ReferencesSection from "@/components/ReferencesSection";
 import VoiceAnswer from "@/components/VoiceAnswer";
 import LearningPathDrawer, { type DrawerChapter } from "@/components/LearningPathDrawer";
+import PdfViewerPane from "@/components/PdfViewerPane";
 import {
   GenerateSettingsFields,
   GenerateSettingsModal,
@@ -30,6 +31,16 @@ export type ContentRow = {
   body: Record<string, unknown> | null;
   youtube_url: string | null;
   image_url: string | null;
+  source_reference_text?: string | null;
+  source_pages?: number[] | null;
+  modules?: {
+    id?: string;
+    title?: string;
+    total_chapters?: number;
+    source_type?: string;
+    source_file_path?: string;
+    source_file_name?: string;
+  } | null;
 };
 
 // Fitur Q — soal PG atau esai, dibedakan `type` (absen = mcq, data lama pra-Fitur Q).
@@ -66,6 +77,7 @@ function wordCount(text: string) {
 }
 
 const MIN_ESSAY_WORDS = 15;
+const MAX_ESSAY_CHARS = 1200;
 
 function hasCode(code?: string | null): code is string {
   return typeof code === "string" && code.trim().length > 0;
@@ -105,9 +117,11 @@ const OPTION_KEYS = ["A", "B", "C", "D"] as const;
 function GeneratePanel({
   contentId,
   voiceLocked = false,
+  highLevelLocked = false,
 }: {
   contentId: string;
   voiceLocked?: boolean; // Fitur CD
+  highLevelLocked?: boolean;
 }) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
@@ -165,21 +179,22 @@ function GeneratePanel({
       </button>
 
       <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-white text-xl shadow-card">
-        ✨
+        <i className="bi bi-stars text-brand-500 text-xl"></i>
       </div>
       <p className="font-semibold text-slate-700">Materi bab ini belum digenerate</p>
-      <p className="mx-auto mt-1 max-w-sm text-sm text-slate-400">
+      <p className="mx-auto mt-1 max-w-lg text-sm text-slate-400">
         AI akan menyusun materi bertahap, ringkasan, dan referensi untuk bab ini. Soal ujian dibuat
         belakangan dari materi ini, saat kamu masuk tahap Ujian.
       </p>
 
       {showSettings && (
-        <div className="mx-auto mt-5 max-w-sm rounded-2xl border border-brand-100 bg-white p-4 text-left shadow-card">
+        <div className="mx-auto mt-6 w-full max-w-2xl lg:max-w-3xl rounded-2xl border border-brand-200/80 bg-white p-5 sm:p-7 text-left shadow-xl animate-in fade-in duration-150">
           <GenerateSettingsFields
             value={options}
             onChange={setOptions}
             disabled={loading}
             voiceLocked={voiceLocked}
+            highLevelLocked={highLevelLocked}
           />
         </div>
       )}
@@ -187,22 +202,27 @@ function GeneratePanel({
       <button
         onClick={handleGenerate}
         disabled={loading}
-        className="mt-5 rounded-xl bg-brand-500 px-6 py-2.5 text-sm font-semibold text-white shadow-lg shadow-brand-500/25 transition hover:bg-brand-600 disabled:opacity-60"
+        className="mt-5 rounded-xl bg-brand-500 px-6 py-2.5 text-sm font-semibold text-white shadow-lg shadow-brand-500/25 transition hover:bg-brand-600 disabled:opacity-60 flex items-center justify-center gap-2 mx-auto"
       >
         {loading ? (
-          "⏳ AI sedang menyusun materi... (±30 detik)"
+          <span className="inline-flex items-center gap-2">
+            <i className="bi bi-hourglass-split animate-spin"></i>
+            <span>AI sedang menyusun materi... (±30 detik)</span>
+          </span>
         ) : showSettings ? (
           <>
-            <i className="bi bi-lightning-charge-fill mr-1"></i> Generate dengan Pengaturan Ini
+            <i className="bi bi-lightning-charge-fill"></i>
+            <span>Generate dengan Pengaturan Ini</span>
           </>
         ) : (
           <>
-            <i className="bi bi-lightning-charge-fill mr-1"></i> Generate Materi Bab Ini
+            <i className="bi bi-lightning-charge-fill"></i>
+            <span>Generate Materi Bab Ini</span>
           </>
         )}
       </button>
       {error && (
-        <p className="mx-auto mt-4 max-w-sm rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-600">
+        <p className="mx-auto mt-4 max-w-md rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-600">
           {error}
         </p>
       )}
@@ -278,7 +298,13 @@ export function KuisTab({
   if (result) {
     return (
       <div className="rounded-sm bg-white p-10 text-center shadow-card">
-        <p className="text-5xl">{result.passed ? "🎉" : "💪"}</p>
+        <div className="flex justify-center text-5xl">
+          {result.passed ? (
+            <i className="bi bi-trophy-fill text-amber-500"></i>
+          ) : (
+            <i className="bi bi-lightning-charge-fill text-brand-500"></i>
+          )}
+        </div>
         <h3 className="mt-3 text-2xl font-bold">
           Skor kamu:{" "}
           <span className={result.passed ? "text-emerald-500" : "text-rose-500"}>
@@ -292,8 +318,8 @@ export function KuisTab({
             : `${result.correctCount} dari ${result.total} soal benar.`}{" "}
           {result.passed
             ? contentId
-              ? "Lulus! Kuota chat tutor AI bab ini di-reset. 🔓"
-              : "Lulus! Kerja bagus. 🎉"
+              ? "Lulus! Kuota chat tutor AI bab ini di-reset."
+              : "Lulus! Kerja bagus."
             : "Belum lulus (minimal 70) — pelajari koreksinya lalu coba lagi ya."}
         </p>
         <button
@@ -350,22 +376,30 @@ export function KuisTab({
               onChange={(e) =>
                 setAnswers((a) => ({ ...a, [String(q.question_number)]: e.target.value }))
               }
+              maxLength={MAX_ESSAY_CHARS}
               rows={6}
-              placeholder={`Tulis jawabanmu di sini (minimal ${MIN_ESSAY_WORDS} kata)...`}
+              placeholder={`Tulis jawabanmu di sini (minimal ${MIN_ESSAY_WORDS} kata, maks ${MAX_ESSAY_CHARS} karakter)...`}
               className="w-full resize-none rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none transition focus:border-brand-400 focus:bg-white focus:ring-2 focus:ring-brand-100"
             />
           )}
-          <p
-            className={`mt-1 text-[11px] ${
-              wordCount(answers[String(q.question_number)] ?? "") < MIN_ESSAY_WORDS
-                ? "text-amber-500"
-                : "text-slate-400"
-            }`}
-          >
-            {wordCount(answers[String(q.question_number)] ?? "")} kata
-            {wordCount(answers[String(q.question_number)] ?? "") < MIN_ESSAY_WORDS &&
-              ` — minimal ${MIN_ESSAY_WORDS} kata`}
-          </p>
+          <div className="mt-1 flex items-center justify-between text-[11px]">
+            <p
+              className={
+                wordCount(answers[String(q.question_number)] ?? "") < MIN_ESSAY_WORDS
+                  ? "text-amber-500 font-medium"
+                  : "text-slate-400"
+              }
+            >
+              {wordCount(answers[String(q.question_number)] ?? "")} kata
+              {wordCount(answers[String(q.question_number)] ?? "") < MIN_ESSAY_WORDS &&
+                ` — minimal ${MIN_ESSAY_WORDS} kata`}
+            </p>
+            {q.answer_mode !== "voice" && (
+              <p className="text-slate-400 font-mono text-[10px]">
+                {(answers[String(q.question_number)] ?? "").length} / {MAX_ESSAY_CHARS} karakter
+              </p>
+            )}
+          </div>
         </div>
       ) : (
         <div className="mt-5 space-y-3">
@@ -395,7 +429,7 @@ export function KuisTab({
                 </span>
                 {selected && (
                   <span className="ml-2 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-ink-900 text-[10px] text-light">
-                    ✓
+                    <i className="bi bi-check-lg"></i>
                   </span>
                 )}
               </button>
@@ -407,7 +441,7 @@ export function KuisTab({
       {/* Expert Co-pilot Tip (strategi umum, bukan bocoran jawaban) */}
       <div className="mt-5 flex gap-3 rounded-2xl bg-brand-50 p-4">
         <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-brand-500 text-sm text-white">
-          ✦
+          <i className="bi bi-stars"></i>
         </span>
         <div>
           <p className="text-xs font-bold text-brand-700">Expert Co-pilot Tip</p>
@@ -451,7 +485,14 @@ export function KuisTab({
             }
             className="rounded-xl bg-ink-900 px-5 py-2.5 text-xs font-semibold text-light transition hover:bg-ink-800 disabled:opacity-50"
           >
-            {submitting ? (hasEssay ? "Menilai jawaban…" : "Mengirim...") : "Submit Quiz ✓"}
+            {submitting ? (
+              hasEssay ? "Menilai jawaban…" : "Mengirim..."
+            ) : (
+              <span className="inline-flex items-center gap-1.5">
+                <span>Submit Quiz</span>
+                <i className="bi bi-check2"></i>
+              </span>
+            )}
           </button>
         )}
       </div>
@@ -468,7 +509,9 @@ export function NilaiTab({ quiz, attempts }: { quiz: QuizRow; attempts: AttemptR
   if (attempts.length === 0) {
     return (
       <div className="rounded-sm border-2 border-dashed border-slate-200 bg-white/60 px-6 py-14 text-center">
-        <p className="text-2xl">📝</p>
+        <div className="mx-auto mb-2 flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-50 text-2xl text-brand-500">
+          <i className="bi bi-pencil-square"></i>
+        </div>
         <p className="mt-2 font-semibold text-slate-700">Belum ada percobaan kuis</p>
         <p className="mt-1 text-sm text-slate-400">Kerjakan ujian bab ini dulu ya.</p>
       </div>
@@ -864,8 +907,9 @@ function LearningStepper({
       {phase === "summary" && (
         <div className="space-y-6">
           <div className="rounded-sm bg-white p-6 shadow-card md:p-8">
-            <h3 className="mb-3 text-sm font-bold uppercase tracking-wider text-emerald-600">
-              📌 Ringkasan
+            <h3 className="mb-3 flex items-center gap-1.5 text-sm font-bold uppercase tracking-wider text-emerald-600">
+              <i className="bi bi-pin-angle-fill"></i>
+              <span>Ringkasan</span>
             </h3>
             <MathText>{summary || "Ringkasan tidak tersedia untuk bab ini."}</MathText>
           </div>
@@ -916,9 +960,10 @@ function LearningStepper({
             </button>
             <button
               onClick={() => goToSection(N - 1)}
-              className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-500 transition hover:bg-slate-50"
+              className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-500 transition hover:bg-slate-50"
             >
-              ← Kembali ke Materi
+              <i className="bi bi-arrow-left"></i>
+              <span>Kembali ke Materi</span>
             </button>
             <span className="ml-auto text-xs text-slate-400">Ujian bab</span>
           </div>
@@ -926,16 +971,18 @@ function LearningStepper({
           {/* Fitur P — materi sempat direvisi lewat regenerate subbab: tawarkan soal baru */}
           {quiz && quizStale && (
             <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl bg-amber-50 px-4 py-3 text-xs text-amber-700">
-              <span>
-                ⚠ Materi bab ini sempat diperbarui — soal lama mungkin belum menyesuaikan.
+              <span className="inline-flex items-center gap-1.5">
+                <i className="bi bi-exclamation-triangle-fill text-amber-600"></i>
+                <span>Materi bab ini sempat diperbarui — soal lama mungkin belum menyesuaikan.</span>
               </span>
               <button
                 type="button"
                 onClick={() => ensureQuiz(true)}
                 disabled={quizLoading}
-                className="shrink-0 rounded-lg bg-amber-500 px-3 py-1.5 text-[11px] font-semibold text-white transition hover:bg-amber-600 disabled:opacity-60"
+                className="inline-flex items-center gap-1.5 shrink-0 rounded-lg bg-amber-500 px-3 py-1.5 text-[11px] font-semibold text-white transition hover:bg-amber-600 disabled:opacity-60"
               >
-                ↻ Buat Soal Baru
+                <i className="bi bi-arrow-repeat"></i>
+                <span>Buat Soal Baru</span>
               </button>
             </div>
           )}
@@ -954,7 +1001,9 @@ function LearningStepper({
             />
           ) : quizLoading ? (
             <div className="rounded-sm bg-white p-10 text-center shadow-card">
-              <p className="text-3xl">✍️</p>
+              <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-brand-50 text-3xl text-brand-500">
+                <i className="bi bi-pencil-fill"></i>
+              </div>
               <p className="mt-3 font-semibold text-slate-700">Menyusun soal ujian…</p>
               <p className="mt-1 text-sm text-slate-400">
                 AI sedang membuat soal dari materi bab ini (±20 detik).
@@ -962,7 +1011,9 @@ function LearningStepper({
             </div>
           ) : (
             <div className="rounded-sm bg-white p-10 text-center shadow-card">
-              <p className="text-3xl">📝</p>
+              <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-brand-50 text-3xl text-brand-500">
+                <i className="bi bi-file-earmark-text"></i>
+              </div>
               <p className="mt-3 font-semibold text-slate-700">Soal ujian belum dibuat</p>
               {quizError && (
                 <p className="mx-auto mt-2 max-w-sm rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-600">
@@ -984,7 +1035,9 @@ function LearningStepper({
         <div className="space-y-6">
           {examPassed ? (
             <div className="rounded-sm bg-gradient-to-br from-emerald-500 to-teal-600 p-8 text-center text-white shadow-card">
-              <p className="text-5xl">🏆</p>
+              <div className="flex justify-center text-5xl">
+                <i className="bi bi-trophy-fill text-amber-300"></i>
+              </div>
               <h3 className="mt-3 text-2xl font-bold">Bab Selesai!</h3>
               <p className="mt-1 text-sm text-emerald-50">
                 Kamu sudah menuntaskan materi dan lulus ujian bab ini. Babnya sekarang bertanda
@@ -993,15 +1046,18 @@ function LearningStepper({
               {courseHref && (
                 <Link
                   href={courseHref}
-                  className="mt-5 inline-flex items-center justify-center rounded-xl bg-white px-6 py-2.5 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-50"
+                  className="mt-5 inline-flex items-center justify-center gap-2 rounded-xl bg-white px-6 py-2.5 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-50"
                 >
-                  ✓ Selesaikan Bab & Kembali ke Course
+                  <i className="bi bi-check2-circle text-base"></i>
+                  <span>Selesaikan Bab & Kembali ke Course</span>
                 </Link>
               )}
             </div>
           ) : (
             <div className="rounded-sm bg-gradient-to-br from-amber-500 to-rose-500 p-8 text-center text-white shadow-card">
-              <p className="text-5xl">💪</p>
+              <div className="flex justify-center text-5xl">
+                <i className="bi bi-lightning-charge-fill text-amber-200"></i>
+              </div>
               <h3 className="mt-3 text-2xl font-bold">Belum Lulus</h3>
               <p className="mt-1 text-sm text-amber-50">
                 Skor minimal untuk menyelesaikan bab ini adalah 70. Pelajari koreksi di bawah,
@@ -1035,6 +1091,7 @@ export default function LearnRoom({
   courseHref,
   chapters = [],
   voiceLocked = false,
+  highLevelLocked = false,
 }: {
   content: ContentRow;
   quiz: QuizRow | null;
@@ -1043,6 +1100,7 @@ export default function LearnRoom({
   courseHref?: string;
   chapters?: DrawerChapter[]; // Fitur Y — daftar bab se-course untuk drawer learning path
   voiceLocked?: boolean; // Fitur CD — paket belum mencakup jawab-suara
+  highLevelLocked?: boolean;
 }) {
   const router = useRouter();
   const generated =
@@ -1055,14 +1113,37 @@ export default function LearnRoom({
   const [regenInstruction, setRegenInstruction] = useState("");
   const [regenBusy, setRegenBusy] = useState(false);
   const [regenError, setRegenError] = useState<string | null>(null);
+  const [regenSuggestions, setRegenSuggestions] = useState<string[]>([]);
   // Materi baru bisa punya jumlah subbab berbeda → posisi stepper lama tidak relevan lagi.
   // Ganti `key` memaksa LearningStepper remount dengan initialStep terbaru dari server (0).
   const [regenVersion, setRegenVersion] = useState(0);
+
+  // Task 16E-UI: Deteksi materi berakar pada berkas dokumen PDF
+  const bodyObj =
+    content.body && typeof content.body === "object"
+      ? (content.body as Record<string, unknown>)
+      : null;
+  const isDocGrounded = Boolean(
+    bodyObj?.document_grounded ||
+      (Array.isArray(content.source_pages) && content.source_pages.length > 0) ||
+      (typeof content.source_reference_text === "string" && content.source_reference_text.length > 0) ||
+      content.modules?.source_type === "pdf"
+  );
+
+  const docPath =
+    (bodyObj?.source_file_path as string) || content.modules?.source_file_path || null;
+  const docName =
+    (bodyObj?.source_file_name as string) || content.modules?.source_file_name || "Dokumen Referensi PDF";
+  const docPages =
+    (bodyObj?.source_pages as number[]) || content.source_pages || [];
+
+  const [pdfPaneOpen, setPdfPaneOpen] = useState(false);
 
   function openRegenerate() {
     setRegenOptions(loadSavedOptions());
     setRegenInstruction("");
     setRegenError(null);
+    setRegenSuggestions([]);
     setRegenOpen(true);
   }
 
@@ -1082,6 +1163,11 @@ export default function LearnRoom({
       });
       const data = await res.json();
       if (!res.ok) {
+        if (res.status === 422 && Array.isArray(data.suggestions) && data.suggestions.length > 0) {
+          setRegenSuggestions(data.suggestions);
+        } else {
+          setRegenSuggestions([]);
+        }
         setRegenError(data.error ?? "Gagal menyusun ulang materi bab. Coba lagi ya.");
         setRegenBusy(false);
         return;
@@ -1105,52 +1191,117 @@ export default function LearnRoom({
             Memulai Mempelajari: {content.title}
           </h1>
           <p className="mt-1 text-sm text-slate-500">Bab {content.chapter_number}</p>
+          {isDocGrounded && (
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-sky-50 border border-sky-200 px-3 py-1 text-xs font-semibold text-sky-700">
+                <i className="bi bi-file-earmark-pdf-fill text-sky-500"></i>
+                <span>Berbasis Dokumen PDF</span>
+                {docPages.length > 0 && (
+                  <>
+                    <span className="text-sky-300">•</span>
+                    <span>
+                      Hlm. {docPages[0]}{docPages.length > 1 ? `-${docPages[docPages.length - 1]}` : ""}
+                    </span>
+                  </>
+                )}
+              </span>
+            </div>
+          )}
         </div>
 
-        {/* Fitur X — tombol generate ulang BAB di pojok kanan; hanya untuk bab yang sudah
-            punya materi (bab pending cukup lewat GeneratePanel biasa). */}
-        {generated && (
-          <button
-            type="button"
-            onClick={openRegenerate}
-            title="Generate ulang seluruh materi bab ini"
-            className="shrink-0 rounded-xl border border-slate-200 px-3.5 py-2 text-xs font-semibold text-slate-600 transition hover:border-brand-300 hover:bg-brand-50/50 hover:text-brand-600"
-          >
-            ↻ Generate Ulang Bab
-          </button>
-        )}
+        <div className="flex items-center gap-2 shrink-0">
+          {/* Task 16E-UI: Tombol penampil PDF split-pane */}
+          {isDocGrounded && docPath && (
+            <button
+              type="button"
+              onClick={() => setPdfPaneOpen((prev) => !prev)}
+              className={`rounded-xl border px-3.5 py-2 text-xs font-semibold transition flex items-center gap-1.5 ${
+                pdfPaneOpen
+                  ? "border-sky-500 bg-sky-50 text-sky-700 shadow-xs"
+                  : "border-slate-200 text-slate-600 hover:border-sky-300 hover:bg-sky-50/50 hover:text-sky-600"
+              }`}
+              title="Tampilkan dokumen PDF referensi berdampingan dengan materi belajar"
+            >
+              <i className="bi bi-layout-split text-sky-500"></i>
+              <span>{pdfPaneOpen ? "Tutup Dokumen PDF" : "Lihat Dokumen Asli"}</span>
+            </button>
+          )}
+
+          {/* Fitur X — tombol generate ulang BAB di pojok kanan */}
+          {generated && (
+            <button
+              type="button"
+              onClick={openRegenerate}
+              title="Generate ulang seluruh materi bab ini"
+              className="shrink-0 rounded-xl border border-slate-200 px-3.5 py-2 text-xs font-semibold text-slate-600 transition hover:border-brand-300 hover:bg-brand-50/50 hover:text-brand-600 flex items-center gap-1.5"
+            >
+              <i className="bi bi-arrow-clockwise"></i>
+              <span>Generate Ulang Bab</span>
+            </button>
+          )}
+        </div>
       </div>
 
-      <div className="mt-6">
-        {!generated ? (
-          <GeneratePanel contentId={content.id} voiceLocked={voiceLocked} />
-        ) : (
-          <LearningStepper
-            key={`${content.id}:${regenVersion}`}
-            content={content}
-            quiz={quiz}
-            attempts={attempts}
-            initialStep={initialStep}
-            courseHref={courseHref}
-            chapters={chapters}
-            voiceLocked={voiceLocked}
-          />
+      <div className={`mt-6 ${pdfPaneOpen ? "grid grid-cols-1 xl:grid-cols-2 gap-6 items-start" : ""}`}>
+        <div className="min-w-0">
+          {!generated ? (
+            <GeneratePanel
+              contentId={content.id}
+              voiceLocked={voiceLocked}
+              highLevelLocked={highLevelLocked}
+            />
+          ) : (
+            <LearningStepper
+              key={`${content.id}:${regenVersion}`}
+              content={content}
+              quiz={quiz}
+              attempts={attempts}
+              initialStep={initialStep}
+              courseHref={courseHref}
+              chapters={chapters}
+              voiceLocked={voiceLocked}
+            />
+          )}
+        </div>
+
+        {pdfPaneOpen && (
+          <div className="sticky top-20">
+            <PdfViewerPane
+              sourceFilePath={docPath}
+              sourceFileName={docName}
+              sourcePages={docPages}
+              isOpen={pdfPaneOpen}
+              onClose={() => setPdfPaneOpen(false)}
+            />
+          </div>
         )}
       </div>
 
       {regenOpen && (
         <GenerateSettingsModal
-          title="↻ Generate Ulang Bab"
+          title={
+            <span className="flex items-center gap-2">
+              <i className="bi bi-arrow-clockwise text-brand-500"></i>
+              <span>Generate Ulang Bab</span>
+            </span>
+          }
           subtitle={`Bab ${content.chapter_number}: ${content.title}`}
           voiceLocked={voiceLocked}
+          highLevelLocked={highLevelLocked}
           value={regenOptions}
           onChange={setRegenOptions}
           busy={regenBusy}
           error={regenError}
+          suggestions={regenSuggestions}
+          onPickSuggestion={(s) => {
+            setRegenInstruction(s);
+            setRegenError(null);
+            setRegenSuggestions([]);
+          }}
           onCancel={() => setRegenOpen(false)}
           onSubmit={runRegenerate}
-          submitLabel="↻ Generate Ulang"
-          busyLabel="⏳ Menulis ulang materi…"
+          submitLabel="Generate Ulang"
+          busyLabel="Menulis ulang materi…"
           extraContent={
             <>
               <label className="mb-1 block text-xs font-semibold text-slate-600">
@@ -1165,9 +1316,12 @@ export default function LearnRoom({
                 placeholder="mis. fokus lebih ke praktik, tambah lebih banyak contoh soal, pakai bahasa lebih sederhana..."
                 className="w-full resize-none rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none transition focus:border-brand-400 focus:bg-white disabled:opacity-60"
               />
-              <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-[11px] text-amber-700">
-                ⚠ Seluruh materi bab ini akan ditulis ulang dan progres membacamu kembali ke awal.
-                Status bab &amp; nilai kuismu tidak dihapus.
+              <p className="mt-3 flex items-start gap-1 rounded-lg bg-amber-50 px-3 py-2 text-[11px] text-amber-700">
+                <i className="bi bi-exclamation-triangle-fill shrink-0 text-amber-500 mt-0.5"></i>
+                <span>
+                  Seluruh materi bab ini akan ditulis ulang dan progres membacamu kembali ke awal.
+                  Status bab &amp; nilai kuismu tidak dihapus.
+                </span>
               </p>
             </>
           }

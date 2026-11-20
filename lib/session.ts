@@ -1,7 +1,9 @@
+import { cache } from "react";
 import { createClient, supabaseConfigured } from "@/lib/supabase/server";
 
 export type SessionUser = {
   id: string;
+  email?: string | null;
   username: string;
   fullName: string;
   avatarUrl: string | null;
@@ -24,37 +26,51 @@ export type SessionUser = {
  * Tidak punya baris `subscriptions` = paket `free`. Sengaja begitu supaya user baru
  * tidak perlu di-backfill dan tidak ada yang bocor karena terlewat.
  */
-export async function getSessionUser(): Promise<SessionUser | null> {
+/**
+ * Task 14B-SM: Memoized Session User Fetcher (React.cache)
+ * Dibungkus dengan React.cache agar panggilan berulang di layout.tsx, page.tsx,
+ * dan komponen server dalam satu siklus render request hanya memicu 1x fetch auth & database.
+ */
+export const getSessionUser = cache(async function getSessionUser(): Promise<SessionUser | null> {
   if (!supabaseConfigured) return null;
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return null;
+  try {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return null;
 
-  const [{ data: profile }, { data: sub }] = await Promise.all([
-    supabase
-      .from("profiles")
-      .select("username, full_name, avatar_url")
-      .eq("id", user.id)
-      .single(),
-    supabase
-      .from("subscriptions")
-      .select("plan_code, status, current_period_end")
-      .eq("user_id", user.id)
-      .maybeSingle(),
-  ]);
+    const [{ data: profile }, { data: sub }] = await Promise.all([
+      supabase
+        .from("profiles")
+        .select("username, full_name, avatar_url")
+        .eq("id", user.id)
+        .single(),
+      supabase
+        .from("subscriptions")
+        .select("plan_code, status, current_period_end")
+        .eq("user_id", user.id)
+        .maybeSingle(),
+    ]);
 
-  const belumLewat =
-    !sub?.current_period_end || new Date(sub.current_period_end).getTime() > Date.now();
-  const aktif = !!sub && sub.status === "active" && belumLewat;
+    const belumLewat =
+      !sub?.current_period_end || new Date(sub.current_period_end).getTime() > Date.now();
+    const aktif = !!sub && sub.status === "active" && belumLewat;
 
-  return {
-    id: user.id,
-    username: profile?.username ?? user.email?.split("@")[0] ?? "user",
-    fullName: profile?.full_name ?? "",
-    avatarUrl: profile?.avatar_url ?? null,
-    planCode: aktif ? sub.plan_code : "free",
-  };
-}
+    return {
+      id: user.id,
+      email: user.email ?? null,
+      username: profile?.username ?? user.email?.split("@")[0] ?? "user",
+      fullName: profile?.full_name ?? "",
+      avatarUrl: profile?.avatar_url ?? null,
+      planCode: aktif ? sub.plan_code : "free",
+    };
+  } catch (err) {
+    console.warn(
+      "[getSessionUser] Gagal mengambil sesi Supabase (koneksi/timeout):",
+      err instanceof Error ? err.message : err
+    );
+    return null;
+  }
+});

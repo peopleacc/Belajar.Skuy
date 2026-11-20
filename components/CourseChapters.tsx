@@ -10,6 +10,10 @@ import {
   saveOptions,
   type GenerateOptions,
 } from "@/components/GenerateSettings";
+import QuotaExceededModal, {
+  type QuotaModalState,
+  isQuotaError,
+} from "@/components/QuotaExceededModal";
 
 export type ChapterNode = {
   id: string;
@@ -19,6 +23,7 @@ export type ChapterNode = {
   percent: number; // progres dalam bab (untuk bar "sedang dipelajari")
   avgScore: number | null; // rata-rata skor bab
   imageUrl?: string | null; // Fitur I — gambar bab (kalau sudah digenerate)
+  source_pages?: number[] | null;
 };
 
 const HEADER_GRADIENTS = [
@@ -43,12 +48,14 @@ function ChapterCard({
 
   const badge =
     n.state === "completed" ? (
-      <span className="rounded-full bg-emerald-400 px-2 py-0.5 text-[10px] font-bold text-white">
-        ✓ Selesai
+      <span className="flex items-center gap-1 rounded-full bg-emerald-400 px-2 py-0.5 text-[10px] font-bold text-white">
+        <i className="bi bi-check-lg"></i>
+        <span>Selesai</span>
       </span>
     ) : n.state === "locked" ? (
-      <span className="rounded-full bg-white/20 px-2 py-0.5 text-[10px] font-semibold text-white">
-        <i className="bi bi-lock"></i>Terkunci
+      <span className="flex items-center gap-1 rounded-full bg-white/20 px-2 py-0.5 text-[10px] font-semibold text-white">
+        <i className="bi bi-lock-fill"></i>
+        <span>Terkunci</span>
       </span>
     ) : n.state === "generate" ? (
       <span className="rounded-full bg-amber-300 px-2 py-0.5 text-[10px] font-bold text-ink-900">
@@ -115,6 +122,13 @@ function ChapterCard({
       <div className="flex flex-1 flex-col p-5">
         <h3 className="line-clamp-2 font-bold leading-snug">{n.title}</h3>
 
+        {n.source_pages && n.source_pages.length > 0 && (
+          <span className="inline-flex items-center gap-1 rounded bg-sky-50 px-2 py-0.5 text-[10px] font-semibold text-sky-700 border border-sky-100 mt-1.5 self-start">
+            <i className="bi bi-file-earmark-pdf-fill text-[9px] text-sky-500"></i>
+            <span>Dokumen Hlm. {n.source_pages[0]}{n.source_pages.length > 1 ? `-${n.source_pages[n.source_pages.length - 1]}` : ""}</span>
+          </span>
+        )}
+
         {inProgress ? (
           <div className="mt-3">
             <div className="mb-1 flex justify-between text-[11px] font-semibold text-slate-400">
@@ -132,7 +146,7 @@ function ChapterCard({
               : n.state === "locked"
                 ? "Selesaikan bab sebelumnya dulu untuk membukanya."
                 : n.state === "generate"
-                  ? "Isi materi digenerate AI saat dibuka."
+                  ? "Isi materi siap digenerate instan."
                   : "Materi siap dipelajari."}
           </p>
         )}
@@ -178,10 +192,16 @@ function PathView({ nodes }: { nodes: ChapterNode[] }) {
                 ? `Sedang dipelajari (${n.percent}%)`
                 : "Siap dipelajari"
               : n.state === "generate"
-                ? "Belum digenerate — buka untuk generate"
+                ? "Belum digenerate — klik untuk generate"
                 : "Terkunci — selesaikan bab sebelumnya dulu";
         const dot =
-          n.state === "completed" ? "✓" : n.state === "locked" ? "🔒" : String(n.chapter_number);
+          n.state === "completed" ? (
+            <i className="bi bi-check-lg"></i>
+          ) : n.state === "locked" ? (
+            <i className="bi bi-lock-fill"></i>
+          ) : (
+            String(n.chapter_number)
+          );
         const dotClass =
           n.state === "completed"
             ? "bg-emerald-500 text-white"
@@ -233,6 +253,7 @@ export default function CourseChapters({
   nextHref,
   reviewHref,
   voiceLocked = false,
+  highLevelLocked = false,
 }: {
   nodes: ChapterNode[];
   completedCount: number;
@@ -240,6 +261,7 @@ export default function CourseChapters({
   nextHref: string | null;
   reviewHref: string | null;
   voiceLocked?: boolean; // Fitur CD — paket belum mencakup soal jawab-suara
+  highLevelLocked?: boolean; // Fitur 7J-GS — level High terkunci untuk non-premium
 }) {
   const router = useRouter();
   const [view, setView] = useState<"kartu" | "path">("kartu");
@@ -250,6 +272,7 @@ export default function CourseChapters({
   const [options, setOptions] = useState<GenerateOptions>(DEFAULT_OPTIONS);
   const [generating, setGenerating] = useState(false);
   const [genError, setGenError] = useState<string | null>(null);
+  const [quotaModal, setQuotaModal] = useState<QuotaModalState>({ isOpen: false });
 
   function openSettings(n: ChapterNode) {
     setOptions(loadSavedOptions());
@@ -269,6 +292,17 @@ export default function CourseChapters({
       });
       const data = await res.json();
       if (!res.ok) {
+        if (isQuotaError(res.status, data)) {
+          setQuotaModal({
+            isOpen: true,
+            title: "Tingkatkan Paket Anda",
+            message: data.error ?? "Fitur ini membutuhkan upgrade paket Premium atau kuota aktif.",
+            featureName: data.featureName ?? "Materi Bab High Level",
+            targetPlan: data.targetPlan ?? "premium",
+          });
+          setGenerating(false);
+          return;
+        }
         setGenError(data.error ?? "Gagal generate materi. Coba lagi ya.");
         setGenerating(false);
         return;
@@ -308,19 +342,22 @@ export default function CourseChapters({
           ))}
           <Link
             href="/dashboard/generate"
-            className="group flex flex-col justify-between rounded-sm bg-primary p-5 text-dark shadow-card transition hover:-translate-y-0.5 hover:shadow-lg"
+            className="group flex flex-col justify-between rounded-2xl border border-indigo-100/80 bg-gradient-to-br from-white via-white to-indigo-50/40 p-6 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-[#283157]/30 hover:shadow-md"
           >
             <div>
-              <span className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-brand-500/10 text-lg text-brand-500">
+              <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-[#283157]/5 border border-[#283157]/10 text-lg text-[#283157] transition-transform duration-300 group-hover:scale-105">
                 <i className="bi bi-stars"></i>
               </span>
-              <h3 className="mt-3 font-bold leading-snug">Ingin Menambah Materi Baru?</h3>
-              <p className="mt-1 text-xs leading-relaxed text-light-muted">
+              <h3 className="mt-3.5 text-sm font-extrabold text-[#283157] leading-snug">
+                Ingin Menambah Materi Baru?
+              </h3>
+              <p className="mt-1.5 text-xs text-slate-500 leading-relaxed">
                 Berikan topik ke AI untuk menyusun course baru sesuai kebutuhanmu.
               </p>
             </div>
-            <span className="mt-4 inline-flex items-center justify-center rounded-xl bg-accent px-4 py-2 text-xs font-semibold text-white transition group-hover:bg-brand-600">
-              + Tambah dengan AI
+            <span className="mt-5 inline-flex w-full items-center justify-center gap-1.5 rounded-xl bg-[#283157] px-4 py-2.5 text-xs font-bold text-white shadow-xs transition duration-200 group-hover:bg-[#1f2644] active:scale-95">
+              <i className="bi bi-plus-lg text-xs"></i>
+              <span>Tambah dengan AI</span>
             </span>
           </Link>
         </div>
@@ -329,7 +366,7 @@ export default function CourseChapters({
       )}
 
       {/* Bottom bar: progress + aksi */}
-      <div className="mt-8 flex flex-wrap items-center gap-4 rounded-sm bg-white p-4 shadow-card">
+      <div className="mt-8 flex flex-wrap items-center gap-4 rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm">
         <div className="min-w-[140px] flex-1">
           <div className="mb-1 flex justify-between text-xs font-semibold text-slate-500">
             <span>
@@ -349,7 +386,10 @@ export default function CourseChapters({
             href={reviewHref}
             className="rounded-xl border border-slate-200 px-4 py-2.5 text-xs font-semibold text-slate-600 transition hover:bg-slate-50"
           >
-            ↻ Review Ulang
+            <span className="inline-flex items-center gap-1.5">
+              <i className="bi bi-arrow-clockwise"></i>
+              <span>Review Ulang</span>
+            </span>
           </Link>
         )}
         {nextHref ? (
@@ -357,11 +397,15 @@ export default function CourseChapters({
             href={nextHref}
             className="rounded-xl bg-brand-500 px-5 py-2.5 text-xs font-semibold text-white shadow-lg shadow-brand-500/25 transition hover:bg-brand-600"
           >
-            Lanjutkan ke Bab →
+            <span className="flex items-center gap-1.5">
+              <span>Lanjutkan ke Bab</span>
+              <i className="bi bi-arrow-right"></i>
+            </span>
           </Link>
         ) : (
-          <span className="rounded-xl bg-emerald-50 px-5 py-2.5 text-xs font-semibold text-emerald-600">
-            🎉 Semua bab selesai
+          <span className="rounded-xl bg-emerald-50 px-5 py-2.5 text-xs font-semibold text-emerald-600 flex items-center gap-1.5">
+            <i className="bi bi-check-circle-fill"></i>
+            <span>Semua bab selesai</span>
           </span>
         )}
       </div>
@@ -371,6 +415,17 @@ export default function CourseChapters({
         <GenerateSettingsModal
           subtitle={`Bab ${settingFor.chapter_number}: ${settingFor.title}`}
           voiceLocked={voiceLocked}
+          highLevelLocked={highLevelLocked}
+          onHighLevelLockedClick={() => {
+            setQuotaModal({
+              isOpen: true,
+              title: "Level High Membutuhkan Akun Premium",
+              message:
+                "Level High (8-12 subbab) menyajikan materi pembelajaran yang jauh lebih komprehensif, terperinci, dan berbobot. Upgrade akun Anda ke Premium untuk mengaksesnya.",
+              featureName: "Materi Bab High Level (8-12 Subbab)",
+              targetPlan: "premium",
+            });
+          }}
           value={options}
           onChange={setOptions}
           busy={generating}
@@ -379,6 +434,11 @@ export default function CourseChapters({
           onSubmit={runGenerate}
         />
       )}
+
+      <QuotaExceededModal
+        state={quotaModal}
+        onClose={() => setQuotaModal({ isOpen: false })}
+      />
     </div>
   );
 }

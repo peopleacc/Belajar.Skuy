@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { createClient, supabaseConfigured } from "@/lib/supabase/server";
 import type { Lang } from "@/lib/i18n";
 import { formatPrice, type Currency } from "@/lib/format";
@@ -68,7 +69,11 @@ const FALLBACK_USER_LIMITS: PlanLimits = {
   interviewSessionsPerWeek: 0,
 };
 
-export async function getUserLimits(planCode: string): Promise<PlanLimits> {
+/**
+ * Task 14B-SM: Memoized User Limits Fetcher (React.cache)
+ * Menghindari pembacaan tabel `plans` berulang kali dalam satu request render.
+ */
+export const getUserLimits = cache(async function getUserLimits(planCode: string): Promise<PlanLimits> {
   if (!supabaseConfigured) return { ...FALLBACK_USER_LIMITS };
   try {
     const supabase = await createClient();
@@ -81,7 +86,7 @@ export async function getUserLimits(planCode: string): Promise<PlanLimits> {
   } catch {
     return { ...FALLBACK_USER_LIMITS };
   }
-}
+});
 
 
 /**

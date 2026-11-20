@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 type ChatMessage = { role: "user" | "assistant"; content: string };
 
 const MAX_MESSAGES = 5;
+const MAX_CHAT_CHARS = 500;
 
 export default function ChatWidget({
   contentId,
@@ -34,6 +35,11 @@ export default function ChatWidget({
   async function send() {
     const text = input.trim();
     if (!text || streaming || quotaEmpty) return;
+
+    if (text.length > MAX_CHAT_CHARS) {
+      setNotice(`Pesan terlalu panjang (maksimal ${MAX_CHAT_CHARS} karakter).`);
+      return;
+    }
 
     setInput("");
     setNotice(null);
@@ -108,10 +114,10 @@ export default function ChatWidget({
       {/* Tombol floating */}
       <button
         onClick={() => setOpen((o) => !o)}
-        className="fixed bottom-6 right-6 z-40 flex h-14 w-14 items-center justify-center rounded-2xl bg-brand-500 text-2xl text-white shadow-2xl shadow-brand-500/40 transition hover:scale-105 hover:bg-brand-600"
+        className="fixed bottom-6 right-6 z-40 flex h-14 w-14 items-center justify-center rounded-2xl bg-brand-500 text-xl text-white shadow-2xl shadow-brand-500/40 transition hover:scale-105 hover:bg-brand-600"
         aria-label="Buka chat tutor AI"
       >
-        {open ? "✕" : <i className="bi bi-chat-dots-fill"></i>}
+        {open ? <i className="bi bi-x-lg"></i> : <i className="bi bi-chat-dots-fill"></i>}
       </button>
 
       {/* Panel chat */}
@@ -122,7 +128,7 @@ export default function ChatWidget({
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2.5">
                 <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-accent text-sm font-bold text-white">
-                  ✦
+                  <i className="bi bi-stars"></i>
                 </div>
                 <div>
                   <p className="text-sm font-bold text-light">Tutor AI</p>
@@ -141,9 +147,12 @@ export default function ChatWidget({
           {/* Pesan */}
           <div className="flex-1 space-y-3 overflow-y-auto bg-slate-50 p-4">
             {messages.length === 0 && (
-              <div className="rounded-2xl bg-white p-4 text-xs leading-relaxed text-slate-500 shadow-card">
-                👋 Halo! Aku tutor AI untuk bab ini. Tanyakan apa pun seputar materinya —
-                kamu punya <b>{remaining} pertanyaan</b>. Kuota reset tiap kamu lulus kuis bab ini.
+              <div className="rounded-2xl bg-white p-4 text-xs leading-relaxed text-slate-500 shadow-card flex items-start gap-2">
+                <i className="bi bi-chat-heart-fill text-brand-500 text-sm shrink-0 mt-0.5"></i>
+                <div>
+                  Halo! Aku tutor AI untuk bab ini. Tanyakan apa pun seputar materinya —
+                  kamu punya <b>{remaining} pertanyaan</b>. Kuota reset tiap kamu lulus kuis bab ini.
+                </div>
               </div>
             )}
             {messages.map((m, i) => (
@@ -182,22 +191,33 @@ export default function ChatWidget({
                 <i className="bi bi-lock"></i> Kuota habis — selesaikan kuis bab ini (skor ≥ 70) untuk reset kuota.
               </p>
             ) : (
-              <div className="flex items-center gap-2">
-                <input
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && send()}
-                  disabled={streaming}
-                  placeholder="Tanya seputar materi bab ini..."
-                  className="flex-1 rounded-xl border border-slate-200 px-3.5 py-2.5 text-xs outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-100 disabled:opacity-60"
-                />
-                <button
-                  onClick={send}
-                  disabled={streaming || !input.trim()}
-                  className="rounded-xl bg-brand-500 px-3.5 py-2.5 text-xs font-bold text-white transition hover:bg-brand-600 disabled:opacity-50"
-                >
-                  ➤
-                </button>
+              <div>
+                <div className="flex items-center gap-2">
+                  <input
+                    value={input}
+                    onChange={(e) => setInput(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && send()}
+                    disabled={streaming}
+                    maxLength={MAX_CHAT_CHARS}
+                    placeholder="Tanya seputar materi bab ini..."
+                    className="flex-1 rounded-xl border border-slate-200 px-3.5 py-2.5 text-xs outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-100 disabled:opacity-60"
+                  />
+                  <button
+                    onClick={send}
+                    disabled={streaming || !input.trim()}
+                    className="flex items-center justify-center rounded-xl bg-brand-500 px-3.5 py-2.5 text-xs font-bold text-white transition hover:bg-brand-600 disabled:opacity-50"
+                  >
+                    <i className="bi bi-send-fill text-xs"></i>
+                  </button>
+                </div>
+                {input.length >= 350 && (
+                  <p className="mt-1 text-right text-[10px] text-slate-400">
+                    <span className={input.length >= MAX_CHAT_CHARS ? "font-bold text-rose-500" : "font-medium"}>
+                      {input.length}
+                    </span>
+                    /{MAX_CHAT_CHARS} karakter
+                  </p>
+                )}
               </div>
             )}
           </div>

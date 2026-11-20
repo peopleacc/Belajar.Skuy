@@ -5,6 +5,7 @@ import {
   KIND_LABEL,
   KIND_ICON,
   STATUS_BADGE,
+  getSessionActionMeta,
   type HistoryRow,
 } from "@/lib/simulationHistory";
 
@@ -64,6 +65,15 @@ export default function SessionHistoryTable({
           {rows.map(({ session: s, scores }, i) => {
             const kind = sessionKind(s);
             const badge = STATUS_BADGE[s.status] ?? STATUS_BADGE.abandoned;
+            const actionMeta = getSessionActionMeta(s, scores);
+            const variantCls =
+              actionMeta.variant === "amber"
+                ? "bg-amber-500/10 text-amber-700 hover:bg-amber-500/20 border-amber-200"
+                : actionMeta.variant === "cyan"
+                ? "bg-cyan-500/10 text-cyan-700 hover:bg-cyan-500/20 border-cyan-200"
+                : actionMeta.variant === "subtle"
+                ? "bg-slate-100 text-slate-700 hover:bg-slate-200 border-slate-200"
+                : "bg-brand-500/10 text-brand-700 hover:bg-brand-500/20 border-brand-200";
             return (
               <tr key={s.id} className={i % 2 === 1 ? "bg-surface-2/60" : undefined}>
                 <td className="px-5 py-3 text-xs text-slate-500">
@@ -87,10 +97,12 @@ export default function SessionHistoryTable({
                 </td>
                 <td className="px-5 py-3 text-right">
                   <Link
-                    href={sessionHref(s)}
-                    className="text-xs font-semibold text-brand-500 hover:underline"
+                    href={actionMeta.href}
+                    title={actionMeta.tooltip}
+                    className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-semibold shadow-sm transition ${variantCls}`}
                   >
-                    Lihat →
+                    <i className={`bi ${actionMeta.icon}`} />
+                    <span>{actionMeta.label}</span>
                   </Link>
                 </td>
               </tr>

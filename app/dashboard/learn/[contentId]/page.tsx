@@ -7,7 +7,7 @@ import LearnRoom, {
   type QuizRow,
 } from "@/components/LearnRoom";
 import ChatWidget from "@/components/ChatWidget";
-import { stripEssaySecrets } from "@/lib/quiz";
+import { stripEssaySecrets, stripExamSecrets } from "@/lib/quiz";
 import { computeChapterStates, collectCompletedContentIds } from "@/lib/chapterState";
 import type { DrawerChapter } from "@/components/LearningPathDrawer";
 import { getSessionUser } from "@/lib/session";
@@ -25,12 +25,14 @@ export default async function LearnPage({
   // penolakan sesungguhnya tetap di Express (`assertFeature`).
   const sessionUser = await getSessionUser();
   const limits = await getUserLimits(sessionUser?.planCode ?? "free");
+  const isFreePlan = !sessionUser?.planCode || sessionUser.planCode === "free";
+  const highLevelLocked = isFreePlan;
 
   const supabase = await createClient();
   const { data: content } = await supabase
     .from("contents")
     .select(
-      "id, title, chapter_number, body, youtube_url, image_url, module_id, modules(id, title, total_chapters)"
+      "id, title, chapter_number, body, youtube_url, image_url, module_id, source_reference_text, source_pages, modules(id, title, total_chapters, source_type, source_file_path, source_file_name)"
     )
     .eq("id", contentId)
     .single();
@@ -40,6 +42,9 @@ export default async function LearnPage({
     id: string;
     title: string;
     total_chapters: number;
+    source_type?: string;
+    source_file_path?: string;
+    source_file_name?: string;
   };
 
   // Fitur U — query ini saling independen (semuanya cuma butuh `content` yang sudah didapat),
@@ -55,7 +60,7 @@ export default async function LearnPage({
   ] = await Promise.all([
     supabase
       .from("contents")
-      .select("id, chapter_number, title, body")
+      .select("id, chapter_number, title, status:body->status")
       .eq("module_id", content.module_id)
       .order("chapter_number"),
     supabase
@@ -78,7 +83,7 @@ export default async function LearnPage({
     id: string;
     chapter_number: number;
     title: string;
-    body: Record<string, unknown> | null;
+    status?: string | null;
   }[];
 
   // Bab "selesai": completed_at terisi, ATAU fallback lulus kuis (data lama pra-Fitur K) —
@@ -87,7 +92,10 @@ export default async function LearnPage({
 
   // Fitur Y/Z — status tiap bab, dihitung dengan helper yang sama dengan halaman course.
   const states = computeChapterStates(
-    siblingRows.map((s) => ({ body: s.body, completed: completedSet.has(s.id) }))
+    siblingRows.map((s) => ({
+      body: s.status === "pending" ? { status: "pending" } : {},
+      completed: completedSet.has(s.id),
+    }))
   );
   const drawerChapters: DrawerChapter[] = siblingRows.map((s, i) => ({
     id: s.id,
@@ -96,49 +104,34 @@ export default async function LearnPage({
     state: states[i],
   }));
 
-  // Navigasi prev/next antar bab
+  // Navigasi prev/next antar bab (Track 13: Bebas navigasi ke bab mana pun)
   const idx = siblingRows.findIndex((s) => s.id === content.id);
   const prev = idx > 0 ? siblingRows[idx - 1] : null;
   const next = idx >= 0 && idx < siblingRows.length - 1 ? siblingRows[idx + 1] : null;
-  const nextLocked = next ? states[idx + 1] === "locked" : false;
-
-  // Fitur Z — bab ini masih TERKUNCI (gate sekuensial Fitur K) → jangan render ruang belajar
-  // sama sekali. Ini menutup celahnya di sumber: berlaku untuk klik tombol "Bab berikutnya"
-  // MAUPUN URL yang diketik langsung.
-  if (idx >= 0 && states[idx] === "locked") {
-    return (
-      <main className="mx-auto max-w-6xl p-8">
-        <div className="rounded-sm border-2 border-dashed border-slate-200 bg-white/60 px-6 py-14 text-center">
-          <p className="text-4xl">🔒</p>
-          <h1 className="mt-3 text-xl font-bold text-slate-800">Bab ini belum terbuka</h1>
-          <p className="mx-auto mt-2 max-w-sm text-sm text-slate-500">
-            Selesaikan bab sebelumnya dulu (baca materinya sampai tuntas dan lulus ujiannya) untuk
-            membuka Bab {content.chapter_number}.
-          </p>
-          <Link
-            href={`/dashboard/courses/${mod.id}`}
-            className="mt-6 inline-block rounded-xl bg-brand-500 px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-brand-500/25 transition hover:bg-brand-600"
-          >
-            ← Kembali ke {mod.title}
-          </Link>
-        </div>
-      </main>
-    );
-  }
-
-  // Fitur Q — kunci jawaban esai (key_points/model_answer) tidak boleh sampai ke browser.
-  const safeQuiz = quiz ? { ...quiz, questions: stripEssaySecrets(quiz.questions as Record<string, unknown>[]) } : null;
 
   // Dependen ke `quiz` — sengaja di luar Promise.all di atas.
+  // Task 14D-LR: Batasi 10 attempts terbaru pada initial load untuk memangkas megabytes payload
   let attempts: AttemptRow[] = [];
   if (quiz) {
     const { data } = await supabase
       .from("quiz_attempts")
       .select("id, score, answers, submitted_at")
       .eq("quiz_id", quiz.id)
-      .order("submitted_at", { ascending: false });
+      .order("submitted_at", { ascending: false })
+      .limit(10);
     attempts = (data ?? []) as AttemptRow[];
   }
+
+  // Task 15D-QS (F19 & F24) — Hapus kunci PG & pembahasan pada fase ujian jika belum ada attempt
+  const hasAttempted = attempts.length > 0;
+  const safeQuiz = quiz
+    ? {
+        ...quiz,
+        questions: hasAttempted
+          ? stripEssaySecrets(quiz.questions as Record<string, unknown>[])
+          : stripExamSecrets(quiz.questions as Record<string, unknown>[]),
+      }
+    : null;
 
   // Progres materi bertahap bab ini (Fitur E) — resume dari step terakhir
   const initialStep =
@@ -147,11 +140,13 @@ export default async function LearnPage({
     )?.current_step ?? 0;
 
   // Sesi chatbot bab ini (RLS: hanya milik user sendiri)
+  // Task 14D-LR: Batasi 10 histori chat terbaru agar tidak membebani initial server render
   const chatRemaining = Math.max(0, 5 - (chatSession?.counter_messages ?? 0));
-  const chatHistory = (Array.isArray(chatSession?.history) ? chatSession!.history : []) as {
-    role: "user" | "assistant";
-    content: string;
-  }[];
+  const chatHistory = (Array.isArray(chatSession?.history) ? chatSession!.history : [])
+    .slice(-10) as {
+      role: "user" | "assistant";
+      content: string;
+    }[];
   const generated =
     content.body != null &&
     (content.body as { status?: string }).status !== "pending";
@@ -177,6 +172,7 @@ export default async function LearnPage({
         courseHref={`/dashboard/courses/${mod.id}`}
         chapters={drawerChapters}
         voiceLocked={!limits.voicePractice}
+        highLevelLocked={highLevelLocked}
       />
 
       <div className="mt-8 flex items-center justify-between border-t border-slate-200 pt-5 text-xs">
@@ -190,25 +186,14 @@ export default async function LearnPage({
         ) : (
           <span />
         )}
-        {/* Fitur Z — bab berikutnya yang masih terkunci TIDAK boleh diklik (dulu bisa, dan
-            langsung membuka panel generate bab yang seharusnya belum terbuka). */}
+        {/* Track 13 — Bebas navigasi ke bab berikutnya tanpa status terkunci */}
         {next ? (
-          nextLocked ? (
-            <span
-              title="Selesaikan bab ini dulu untuk membuka bab berikutnya"
-              className="cursor-not-allowed font-medium text-slate-300"
-            >
-              <i className="bi bi-lock mr-1"></i>
-              Bab {next.chapter_number}: {next.title}
-            </span>
-          ) : (
-            <Link
-              href={`/dashboard/learn/${next.id}`}
-              className="font-medium text-slate-500 hover:text-brand-500"
-            >
-              Bab {next.chapter_number}: {next.title} →
-            </Link>
-          )
+          <Link
+            href={`/dashboard/learn/${next.id}`}
+            className="font-medium text-slate-500 hover:text-brand-500"
+          >
+            Bab {next.chapter_number}: {next.title} →
+          </Link>
         ) : (
           <span />
         )}

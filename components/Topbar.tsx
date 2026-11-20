@@ -1,6 +1,5 @@
 "use client";
 
-import ThemeToggle from "@/components/ThemeToggle";
 import UserMenu from "@/components/UserMenu";
 import type { Lang } from "@/lib/i18n";
 
@@ -20,7 +19,6 @@ export default function Topbar({
 }) {
   return (
     <header className="sticky top-0 z-30 flex h-16 items-center justify-end gap-3 border-b border-border bg-secondary-fixed/80 px-6 backdrop-blur transition-colors duration-200">
-      <ThemeToggle />
       <UserMenu fullName={fullName} username={username} avatarUrl={avatarUrl} />
     </header>
   );
