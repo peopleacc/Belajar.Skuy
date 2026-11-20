@@ -109,12 +109,13 @@ export function loadSavedOptions(): GenerateOptions {
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
     if (!raw) return DEFAULT_OPTIONS;
-    const parsed = JSON.parse(raw) as Partial<GenerateOptions>;
+    const parsed = (JSON.parse(raw) ?? {}) as Record<string, unknown>;
     const quizCount = Number(parsed.quizCount);
+    const rawLevel = typeof parsed.level === "string" ? parsed.level : "";
     let level: CourseLevel = "High";
-    if (parsed.level === "Low" || parsed.level === "Dasar") {
+    if (rawLevel === "Low" || rawLevel === "Dasar") {
       level = "Low";
-    } else if (parsed.level === "High" || parsed.level === "Lanjut") {
+    } else if (rawLevel === "High" || rawLevel === "Lanjut") {
       level = "High";
     } else {
       level = "High";

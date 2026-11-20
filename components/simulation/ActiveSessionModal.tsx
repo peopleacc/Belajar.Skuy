@@ -64,6 +64,7 @@ export default function ActiveSessionModal({
   }
 
   function handleResume() {
+    if (!session) return;
     router.push(`/simulation/run/${session.id}`);
   }
 

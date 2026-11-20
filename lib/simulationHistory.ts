@@ -239,7 +239,7 @@ export async function fetchSimulationHistory(
     .in("session_id", sessionIds);
 
   const reportMap = new Map<string, { scores: SessionScores; feedback?: ReportFeedback }>(
-    ((reports ?? []) as ReportRow[]).map((r) => [
+    ((reports ?? []) as unknown as ReportRow[]).map((r) => [
       r.session_id,
       { scores: r.scores, feedback: r.feedback ?? null },
     ])

@@ -218,7 +218,7 @@ export default async function PricingPage() {
       </main>
 
       {/* Shared SiteFooter */}
-      <SiteFooter lang={lang} t={t} anchorBase="/" />
+      <SiteFooter t={t} anchorBase="/" />
     </div>
   );
 }

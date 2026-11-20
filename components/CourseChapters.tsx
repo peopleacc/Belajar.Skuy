@@ -436,8 +436,14 @@ export default function CourseChapters({
       )}
 
       <QuotaExceededModal
+        isOpen={quotaModal.isOpen}
         state={quotaModal}
         onClose={() => setQuotaModal({ isOpen: false })}
+        title={quotaModal.title}
+        message={quotaModal.message}
+        featureName={quotaModal.featureName}
+        targetPlan={quotaModal.targetPlan}
+        quota={quotaModal.quota}
       />
     </div>
   );

@@ -14,6 +14,7 @@ export default function SiteFooter({
 }: {
   t: Dict;
   anchorBase?: string;
+  lang?: string;
 }) {
   return (
     <footer className="border-t border-border/80 bg-surface px-5 pt-16 pb-12 transition-colors duration-300 md:px-10">

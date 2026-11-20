@@ -45,7 +45,7 @@ function SimulationNavItems() {
   );
 
   // Dropdown otomatis terbuka jika pengguna sedang berada di salah satu halaman anak simulasi
-  const [simulationOpen, setSimulationOpen] = useState(isSimulationChildActive || true);
+  const [simulationOpen, setSimulationOpen] = useState<boolean>(isSimulationChildActive || true);
 
   return (
     <>

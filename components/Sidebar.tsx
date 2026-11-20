@@ -45,7 +45,7 @@ function CourseNavItems() {
   );
 
   // Dropdown otomatis langsung terbuka secara default saat pertama kali masuk (open by default)
-  const [courseOpen, setCourseOpen] = useState(isCourseChildActive || true);
+  const [courseOpen, setCourseOpen] = useState<boolean>(isCourseChildActive || true);
 
   return (
     <>

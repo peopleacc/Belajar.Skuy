@@ -37,13 +37,14 @@ export function isQuotaError(status: number, data?: any): boolean {
 }
 
 interface QuotaExceededModalProps {
-  isOpen: boolean;
+  isOpen?: boolean;
   onClose: () => void;
   title?: string;
   message?: string;
   featureName?: string;
   targetPlan?: string; // mis. 'premium' | 'premium_presentasi' | 'premium_gabungan' | 'pro'
   quota?: QuotaInfo | null;
+  state?: QuotaModalState;
 }
 
 /**
@@ -52,14 +53,22 @@ interface QuotaExceededModalProps {
  * 100% menggunakan Bootstrap Icons.
  */
 export default function QuotaExceededModal({
-  isOpen,
+  isOpen: propIsOpen,
   onClose,
-  title,
-  message,
-  featureName,
-  targetPlan = "premium_gabungan",
-  quota,
+  title: propTitle,
+  message: propMessage,
+  featureName: propFeatureName,
+  targetPlan: propTargetPlan,
+  quota: propQuota,
+  state,
 }: QuotaExceededModalProps) {
+  const isOpen = state ? state.isOpen : Boolean(propIsOpen);
+  const title = state?.title ?? propTitle;
+  const message = state?.message ?? propMessage;
+  const featureName = state?.featureName ?? propFeatureName;
+  const targetPlan = state?.targetPlan ?? propTargetPlan ?? "premium_gabungan";
+  const quota = state?.quota ?? propQuota;
+
   if (!isOpen) return null;
 
   const defaultTitle = featureName
